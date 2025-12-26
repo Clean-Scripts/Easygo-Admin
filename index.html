@@ -87,7 +87,7 @@
 
     <script>
         // REPLACE WITH NEW TOKEN AFTER DELETING OLD ONE
-        const GH_TOKEN = "YOUR_NEW_TOKEN_HERE"; 
+        const GH_TOKEN = "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"; 
 
         let products = [
             { sort: 1, name: "Steamed Veg Momos", raw: 2.82, std: 70, grams: 0, limit: 5, pcsKg: 39, sold: 0, special: false },
@@ -158,7 +158,7 @@
 
         async function pushToGithub() {
             const repo = document.getElementById('ghRepo').value;
-            if(!GH_TOKEN || GH_TOKEN === "YOUR_NEW_TOKEN_HERE") return alert("Please set your NEW GH_TOKEN first!");
+            if(!GH_TOKEN || GH_TOKEN === "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") return alert("Please set your NEW GH_TOKEN first!");
 
             try {
                 // Fetch the current SHA to update
