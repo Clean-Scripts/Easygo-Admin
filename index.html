@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Easy Go Admin | Command Center</title>
+</head>
+<body class="bg-slate-900 min-h-screen p-4 md:p-10">
+    <div class="max-w-7xl mx-auto bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-white/20">
+        <div class="p-8 border-b flex flex-col md:flex-row justify-between items-center bg-gray-50">
+            <div class="flex items-center gap-4">
+                <img src="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png" class="h-12">
+                <h1 class="text-2xl font-black uppercase tracking-tighter">Enterprise Command</h1>
+            </div>
+            <div class="flex gap-3 mt-4 md:mt-0">
+                <input type="password" id="ghToken" placeholder="Paste GitHub Token" class="px-4 py-2 border rounded-xl text-xs font-bold w-48 shadow-inner">
+                <button onclick="pushToGithub()" class="bg-green-600 text-white px-6 py-2 rounded-xl font-bold uppercase text-[10px] hover:bg-green-700 transition-all">Save & Update Public Menu</button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 p-8">
+            <div class="bg-indigo-950 p-8 rounded-[2rem] text-white">
+                <p class="text-indigo-400 text-[10px] font-bold uppercase mb-1">Total EBITDA Impact</p>
+                <h2 id="ebitdaDisplay" class="text-5xl font-black">₹0</h2>
+            </div>
+            <div class="bg-blue-50 p-8 rounded-[2rem] border border-blue-100">
+                <p class="text-blue-400 text-[10px] font-bold uppercase mb-1">Sync Status</p>
+                <p class="font-black text-blue-900 uppercase">Target: Clean-Scripts/Easygo-Menu</p>
+            </div>
+        </div>
+
+        <div class="px-8 pb-8">
+            <div class="overflow-x-auto rounded-2xl border">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-900 text-white text-[10px] font-black uppercase">
+                        <tr>
+                            <th class="p-4">Item Name</th>
+                            <th>Admin (Pieces)</th>
+                            <th>Customer (Grams)</th>
+                            <th>Price (₹)</th>
+                            <th>Raw Cost (₹)</th>
+                            <th>Stock (Kg)</th>
+                            <th>Special</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mgmtTable" class="divide-y text-xs font-bold"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // YOUR FULL ITEM LIST
+        let products = [
+            { name: "Steamed Veg Momos", raw: 2.82, std: 70, grams: 0, limit: 5, pcsKg: 39, special: false },
+            { name: "Fried Veg Momos", raw: 2.82, std: 80, grams: 0, limit: 5, pcsKg: 39, special: true },
+            { name: "Steamed Cheese Corn", raw: 3.89, std: 90, grams: 0, limit: 5, pcsKg: 36, special: false },
+            { name: "Fried Cheese Corn", raw: 3.89, std: 100, grams: 0, limit: 5, pcsKg: 36, special: false },
+            { name: "Mini Samosas", raw: 7.27, std: 140, grams: 0, limit: 5, pcsKg: 33, special: false },
+            { name: "French Fries", raw: 0.83, std: 80, grams: 150, limit: 10, pcsKg: 120, special: true }
+        ];
+
+        function renderMgmt() {
+            const container = document.getElementById('mgmtTable');
+            container.innerHTML = products.map((p, i) => {
+                // Calculation: Standard Rate / Raw Cost per piece for Admin view
+                const adminPieces = Math.floor(p.std / p.raw);
+                
+                return `
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="p-4 font-black uppercase text-gray-900">${p.name}</td>
+                    <td class="text-blue-600 font-black">${adminPieces} Pcs</td>
+                    <td>
+                        <input type="number" onchange="products[${i}].grams=this.value" value="${p.grams}" 
+                        class="w-16 border rounded p-1 ${p.name !== 'French Fries' ? 'opacity-20' : ''}"> g
+                    </td>
+                    <td>₹<input type="number" onchange="products[${i}].std=this.value; calculateEbitda()" value="${p.std}" class="w-16 border rounded p-1"></td>
+                    <td>₹<input type="number" step="0.01" onchange="products[${i}].raw=this.value" value="${p.raw}" class="w-16 border rounded p-1"></td>
+                    <td><input type="number" onchange="products[${i}].limit=this.value" value="${p.limit}" class="w-12 border rounded p-1">kg</td>
+                    <td><input type="checkbox" onchange="products[${i}].special=this.checked" ${p.special ? 'checked' : ''}></td>
+                </tr>`;
+            }).join('');
+            calculateEbitda();
+        }
+
+        function calculateEbitda() {
+            // Logic: Margin = Std Rate - (Raw * 8 + overhead)
+            let total = products.reduce((acc, p) => acc + (p.std - (p.raw * 8 + 6.39)), 0);
+            document.getElementById('ebitdaDisplay').innerText = `₹${Math.round(total)}`;
+        }
+
+        async function pushToGithub() {
+            const token = document.getElementById('ghToken').value;
+            const repo = "Clean-Scripts/Easygo-Menu"; // CHANGE TO YOUR REPO
+            if(!token) return alert("Please paste your GitHub Token!");
+
+            try {
+                // 1. Get SHA of existing menu.json
+                const res = await fetch(`https://api.github.com/repos/${repo}/contents/menu.json`, {
+                    headers: { 'Authorization': `token ${token}` }
+                });
+                const data = await res.json();
+                
+                // 2. Update the file
+                const update = await fetch(`https://api.github.com/repos/${repo}/contents/menu.json`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: "Admin: Sync Menu",
+                        content: btoa(JSON.stringify(products, null, 2)),
+                        sha: data.sha
+                    })
+                });
+
+                if(update.ok) alert("Menu Sync Successful!");
+                else alert("Sync Failed. Check token permissions.");
+            } catch (e) { alert("Error connecting to GitHub."); }
+        }
+
+        window.onload = renderMgmt;
+    </script>
+</body>
+</html>
