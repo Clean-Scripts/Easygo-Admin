@@ -1,320 +1,1597 @@
-        // Update content
-        icon.className = iconClass;
-        titleEl.textContent = title;
-        messageEl.textContent = message;
-        toast.querySelector('.notification').className = `notification bg-white rounded-xl shadow-xl p-4 max-w-sm border-l-4 ${borderColor}`;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <title>EasyGo | Admin Panel</title>
+    <style>
+        .order-card { transition: all 0.3s; }
+        .order-card:hover { transform: translateY(-2px); }
+        .status-pending { border-left: 4px solid #f59e0b; }
+        .status-confirmed { border-left: 4px solid #3b82f6; }
+        .status-preparing { border-left: 4px solid #8b5cf6; }
+        .status-ready { border-left: 4px solid #10b981; }
+        .status-out-for-delivery { border-left: 4px solid #f59e0b; }
+        .status-delivered { border-left: 4px solid #10b981; }
+        .status-cancelled { border-left: 4px solid #ef4444; }
+        .modal-overlay { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         
-        // Show notification
-        toast.classList.remove('hidden');
+        /* Status badges */
+        .badge-pending { background: #fef3c7; color: #92400e; }
+        .badge-confirmed { background: #dbeafe; color: #1e40af; }
+        .badge-preparing { background: #ede9fe; color: #5b21b6; }
+        .badge-ready { background: #d1fae5; color: #065f46; }
+        .badge-out-for-delivery { background: #fef3c7; color: #92400e; }
+        .badge-delivered { background: #d1fae5; color: #065f46; }
+        .badge-cancelled { background: #fee2e2; color: #991b1b; }
         
-        // Auto hide after 4 seconds
-        setTimeout(() => {
-            toast.classList.add('hidden');
-        }, 4000);
-    }
-
-    // ==================== SAMPLE DATA GENERATION (FOR TESTING) ====================
-    function addSampleOrders() {
-        if (!isFirebaseConnected) {
-            showNotification('error', 'Database Error', 'Cannot add sample data');
-            return;
+        /* Pulse animation for real-time updates */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
         }
+        .pulse { animation: pulse 2s infinite; }
         
-        const sampleOrders = [
-            {
-                orderId: "ORD-" + Date.now().toString().slice(-6),
-                customerName: "Rajesh Kumar",
-                customerPhone: "+919876543210",
-                customerEmail: "rajesh@example.com",
-                items: [
-                    { name: "Paneer Butter Masala", quantity: 2, price: 220, pack: "Family Pack" },
-                    { name: "Garlic Naan", quantity: 4, price: 40, pack: "Standard" },
-                    { name: "Coke", quantity: 2, price: 60, pack: "1.25L" }
-                ],
-                totalAmount: 660,
-                deliveryMode: "delivery",
-                address: "123 MG Road, Indore, MP 452001",
-                paymentMethod: "Razorpay",
-                paymentId: "pay_" + Math.random().toString(36).substr(2, 9),
-                status: "pending",
-                otp: "123456",
-                createdAt: Date.now() - 300000, // 5 minutes ago
-                updatedAt: Date.now() - 300000
-            },
-            {
-                orderId: "ORD-" + (Date.now() + 1000).toString().slice(-6),
-                customerName: "Priya Sharma",
-                customerPhone: "+919876543211",
-                customerEmail: "priya@example.com",
-                items: [
-                    { name: "Veg Biryani", quantity: 1, price: 180, pack: "Standard" },
-                    { name: "Raita", quantity: 1, price: 40, pack: "Standard" },
-                    { name: "Chocolate Lava Cake", quantity: 2, price: 120, pack: "Standard" }
-                ],
-                totalAmount: 340,
-                deliveryMode: "takeaway",
-                address: "Takeaway - Prime Square, Indore",
-                paymentMethod: "Razorpay",
-                paymentId: "pay_" + Math.random().toString(36).substr(2, 9),
-                status: "preparing",
-                otp: "654321",
-                createdAt: Date.now() - 600000, // 10 minutes ago
-                updatedAt: Date.now() - 120000
-            }
-        ];
+        /* Firebase status indicator */
+        .firebase-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- Firebase Status Indicator -->
+    <div id="firebaseStatus" class="firebase-status hidden">
+        🔄 Connecting to Firebase...
+    </div>
+
+    <!-- Admin Login -->
+    <div id="login-section" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full mx-4 border-2 border-gray-100">
+            <div class="text-center mb-8">
+                <img src="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png" 
+                     class="h-24 w-24 mx-auto mb-4 p-2 bg-green-50 rounded-full border-4 border-green-100">
+                <h1 class="text-3xl font-black text-gray-900 uppercase tracking-tight">EasyGo Admin</h1>
+                <p class="text-gray-600 mt-2 font-medium">Restaurant Management Panel</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 block">Admin PIN</label>
+                    <input type="password" id="admin-pin" 
+                           placeholder="Enter 4-digit PIN" 
+                           class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-2xl font-bold tracking-widest focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none transition"
+                           maxlength="4">
+                </div>
+                
+                <button onclick="loginAdmin()" 
+                        class="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-xl hover:opacity-90 transition-all shadow-lg hover:shadow-xl">
+                    🔐 Login to Dashboard
+                </button>
+            </div>
+            
+            <p class="text-sm text-gray-500 text-center mt-6">
+                🔐 PIN: <span class="font-bold text-gray-700">8008</span>
+            </p>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="dashboard-section" class="hidden p-4 md:p-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-black text-gray-900 uppercase tracking-tight">EasyGo Restaurant Dashboard</h1>
+                    <p class="text-gray-600 mt-2">Real-time order management with Firebase</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="bg-white px-4 py-2 rounded-xl shadow border border-gray-100">
+                        <span id="current-time" class="font-bold text-gray-800"></span>
+                    </div>
+                    <button onclick="logoutAdmin()" 
+                            class="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-bold shadow">
+                        Logout
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-2xl shadow-lg">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-sm font-bold uppercase tracking-widest opacity-90">Total Orders</p>
+                            <p id="total-orders" class="text-3xl font-black mt-2">0</p>
+                        </div>
+                        <span class="text-3xl opacity-80">📦</span>
+                    </div>
+                </div>
+                
+                <div class="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-6 rounded-2xl shadow-lg">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-sm font-bold uppercase tracking-widest opacity-90">Today's Revenue</p>
+                            <p id="today-revenue" class="text-3xl font-black mt-2">₹0</p>
+                        </div>
+                        <span class="text-3xl opacity-80">💰</span>
+                    </div>
+                </div>
+                
+                <div class="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-6 rounded-2xl shadow-lg">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-sm font-bold uppercase tracking-widest opacity-90">Active Orders</p>
+                            <p id="active-orders-count" class="text-3xl font-black mt-2">0</p>
+                        </div>
+                        <span class="text-3xl opacity-80">⏳</span>
+                    </div>
+                </div>
+                
+                <div class="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-6 rounded-2xl shadow-lg">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-sm font-bold uppercase tracking-widest opacity-90">Real-time</p>
+                            <p id="realtime-status" class="text-3xl font-black mt-2 pulse">🟢 Live</p>
+                        </div>
+                        <span class="text-3xl opacity-80">⚡</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Active Orders Column -->
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                                📦 Active Orders
+                            </h2>
+                            <span id="active-count" class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold">0 orders</span>
+                        </div>
+                        
+                        <!-- Order Filter Tabs -->
+                        <div class="flex flex-wrap gap-2 mb-6">
+                            <button onclick="filterOrders('all')" 
+                                    class="px-4 py-2 bg-blue-500 text-white rounded-xl font-bold text-sm">All</button>
+                            <button onclick="filterOrders('pending')" 
+                                    class="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-xl font-bold text-sm">Pending</button>
+                            <button onclick="filterOrders('confirmed')" 
+                                    class="px-4 py-2 bg-blue-100 text-blue-800 rounded-xl font-bold text-sm">Confirmed</button>
+                            <button onclick="filterOrders('preparing')" 
+                                    class="px-4 py-2 bg-purple-100 text-purple-800 rounded-xl font-bold text-sm">Preparing</button>
+                            <button onclick="filterOrders('out-for-delivery')" 
+                                    class="px-4 py-2 bg-indigo-100 text-indigo-800 rounded-xl font-bold text-sm">Delivery</button>
+                        </div>
+                        
+                        <!-- Orders List -->
+                        <div id="orders-container" class="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                            <div class="text-center py-12">
+                                <div class="text-4xl mb-4">📭</div>
+                                <p class="text-gray-500 font-medium">No active orders yet</p>
+                                <p class="text-sm text-gray-400 mt-2">Orders will appear here automatically</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Actions & Details -->
+                <div class="space-y-8">
+                    <!-- Selected Order Details -->
+                    <div id="order-details-section" class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                📋 Selected Order
+                            </h2>
+                            <button onclick="clearSelectedOrder()" 
+                                    class="text-sm text-gray-500 hover:text-gray-700">
+                                Clear
+                            </button>
+                        </div>
+                        
+                        <div id="selected-order-details" class="space-y-4">
+                            <!-- Order details will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                        <h2 class="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                            ⚡ Quick Actions
+                        </h2>
+                        
+                        <!-- Update Order Status -->
+                        <div class="mb-8">
+                            <h3 class="font-bold mb-4 text-gray-700">Update Order Status</h3>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="updateSelectedOrderStatus('confirmed')" 
+                                        class="p-3 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors font-medium">
+                                    ✅ Confirm
+                                </button>
+                                <button onclick="updateSelectedOrderStatus('preparing')" 
+                                        class="p-3 bg-purple-50 text-purple-700 rounded-xl hover:bg-purple-100 transition-colors font-medium">
+                                    👨‍🍳 Preparing
+                                </button>
+                                <button onclick="updateSelectedOrderStatus('ready')" 
+                                        class="p-3 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-colors font-medium">
+                                    ✅ Ready
+                                </button>
+                                <button onclick="updateSelectedOrderStatus('out-for-delivery')" 
+                                        class="p-3 bg-indigo-50 text-indigo-700 rounded-xl hover:bg-indigo-100 transition-colors font-medium">
+                                    🛵 Out for Delivery
+                                </button>
+                                <button onclick="showDeliveryModal()" 
+                                        class="p-3 bg-emerald-50 text-emerald-700 rounded-xl hover:bg-emerald-100 transition-colors font-medium">
+                                    🚚 Deliver
+                                </button>
+                                <button onclick="showCancelModal()" 
+                                        class="p-3 bg-red-50 text-red-700 rounded-xl hover:bg-red-100 transition-colors font-medium">
+                                    ❌ Cancel
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Delivery Partner Info -->
+                        <div class="mb-8">
+                            <h3 class="font-bold mb-4 text-gray-700">🚚 Delivery Partner</h3>
+                            <div class="space-y-3">
+                                <div class="flex justify-between">
+                                    <span>Name:</span>
+                                    <span id="delivery-name" class="font-bold">Nishant</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Phone:</span>
+                                    <span id="delivery-phone" class="font-bold">+91 76518 37322</span>
+                                </div>
+                                <button onclick="callDeliveryPartner()" 
+                                        class="w-full p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                                    📞 Call Delivery Partner
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Notify Customer -->
+                        <div class="mb-8">
+                            <h3 class="font-bold mb-4 text-gray-700">📱 Notify Customer</h3>
+                            <div class="space-y-2">
+                                <button onclick="notifyCustomer('preparing')" 
+                                        class="w-full p-3 bg-yellow-50 text-yellow-700 rounded-xl hover:bg-yellow-100 transition-colors text-left">
+                                    ⏰ Food is being prepared
+                                </button>
+                                <button onclick="notifyCustomer('ready')" 
+                                        class="w-full p-3 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-colors text-left">
+                                    ✅ Order is ready
+                                </button>
+                                <button onclick="notifyCustomer('out-for-delivery')" 
+                                        class="w-full p-3 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors text-left">
+                                    🛵 Out for delivery
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Order Summary -->
+                        <div id="quick-summary" class="hidden">
+                            <h3 class="font-bold mb-4 text-gray-700">Quick Summary</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Order ID:</span>
+                                    <span id="summary-order-id" class="font-bold">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Customer:</span>
+                                    <span id="summary-customer" class="font-bold">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Amount:</span>
+                                    <span id="summary-amount" class="font-bold">₹0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Status:</span>
+                                    <span id="summary-status" class="badge-pending px-2 py-1 rounded text-xs">Pending</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order History -->
+            <div class="mt-8 bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        📋 Recent Order History (Today)
+                    </h2>
+                    <button onclick="loadOrderHistory()" class="text-blue-500 hover:text-blue-700 font-medium">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div id="order-history" class="space-y-3">
+                    <!-- History will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delivery Confirmation Modal -->
+    <div id="delivery-modal" class="modal-overlay fixed inset-0 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-100">
+            <h3 class="text-2xl font-bold mb-6 text-gray-900 flex items-center gap-2">
+                ✅ Confirm Delivery
+            </h3>
+            
+            <div class="space-y-6">
+                <div>
+                    <label class="text-sm font-bold text-gray-700 mb-2 block">Enter OTP from customer:</label>
+                    <input type="text" id="delivery-otp" 
+                           placeholder="Enter 6-digit OTP" 
+                           class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-3xl font-bold tracking-widest focus:border-green-500 focus:ring-2 focus:ring-green-100 outline-none"
+                           maxlength="6">
+                </div>
+                
+                <div>
+                    <label class="text-sm font-bold text-gray-700 mb-2 block">Delivery Partner Name:</label>
+                    <input type="text" id="delivery-partner-name" 
+                           placeholder="Enter name" 
+                           class="w-full p-3 border border-gray-300 rounded-lg"
+                           value="Nishant">
+                </div>
+                
+                <div>
+                    <label class="text-sm font-bold text-gray-700 mb-2 block">Delivery Partner Phone:</label>
+                    <input type="text" id="delivery-partner-phone" 
+                           placeholder="Enter phone number" 
+                           class="w-full p-3 border border-gray-300 rounded-lg"
+                           value="7651837322">
+                </div>
+                
+                <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                    <p class="text-sm text-yellow-800 font-medium">
+                        ⚠️ Verify OTP with customer before marking as delivered
+                    </p>
+                </div>
+            </div>
+            
+            <div class="flex gap-4 mt-8">
+                <button onclick="confirmDelivery()" 
+                        class="flex-1 py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors shadow-lg">
+                    ✅ Confirm Delivery
+                </button>
+                <button onclick="closeDeliveryModal()" 
+                        class="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cancel Order Modal -->
+    <div id="cancel-modal" class="modal-overlay fixed inset-0 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-100">
+            <h3 class="text-2xl font-bold mb-6 text-gray-900 flex items-center gap-2">
+                ❌ Cancel Order
+            </h3>
+            
+            <div class="mb-6">
+                <p class="text-red-600 font-bold mb-4">Are you sure you want to cancel this order?</p>
+                <p class="text-sm text-gray-600 mb-2">Reason for cancellation (optional):</p>
+                <input type="text" id="cancel-reason" 
+                       placeholder="Enter reason..." 
+                       class="w-full p-3 border border-gray-300 rounded-lg">
+            </div>
+            
+            <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                <p class="text-sm text-red-800">
+                    ⚠️ This action cannot be undone. A refund will be initiated automatically.
+                </p>
+            </div>
+            
+            <div class="flex gap-4">
+                <button onclick="confirmCancel()" 
+                        class="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-lg">
+                    ❌ Confirm Cancel
+                </button>
+                <button onclick="closeCancelModal()" 
+                        class="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors">
+                    Go Back
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Details Modal -->
+    <div id="details-modal" class="modal-overlay fixed inset-0 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-100">
+            <div class="flex justify-between items-center mb-8">
+                <h3 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    📋 Complete Order Details
+                </h3>
+                <button onclick="closeDetailsModal()" 
+                        class="text-gray-500 hover:text-gray-700 text-2xl">
+                    ✕
+                </button>
+            </div>
+            
+            <div id="modal-order-details" class="space-y-6">
+                <!-- Complete order details will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- WhatsApp Modal -->
+    <div id="whatsapp-modal" class="modal-overlay fixed inset-0 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border border-gray-100">
+            <div class="text-center mb-8">
+                <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <span class="text-3xl">📱</span>
+                </div>
+                <h3 class="text-2xl font-bold mb-2">Send WhatsApp Update</h3>
+                <p class="text-gray-600">Customer will receive this message</p>
+            </div>
+            
+            <div class="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                <p class="font-bold text-blue-800" id="whatsapp-message-title">Order Update</p>
+                <p class="text-sm text-blue-600 mt-2" id="whatsapp-message-desc">Your order status has been updated</p>
+            </div>
+            
+            <div class="flex gap-4">
+                <button onclick="sendWhatsAppNow()" 
+                        class="flex-1 py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-colors shadow-lg">
+                    📱 Send WhatsApp
+                </button>
+                <button onclick="closeWhatsAppModal()" 
+                        class="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors">
+                    Skip
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="notification-toast" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl p-4 max-w-sm border-l-4 border-green-500">
+            <div class="flex items-center gap-3">
+                <span id="notification-icon" class="text-green-500 text-xl">✅</span>
+                <div>
+                    <p id="notification-title" class="font-bold">Success</p>
+                    <p id="notification-message" class="text-sm text-gray-600">Operation completed successfully</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<!-- Firebase JavaScript -->
+<script>
+// ==================== FIREBASE CONFIGURATION ====================
+const firebaseConfig = {
+    apiKey: "AIzaSyCU_wJYBTwEwMZQ-iTYOjUZuEHEphA0DXc",
+    authDomain: "easygo-10f4b.firebaseapp.com",
+    databaseURL: "https://easygo-10f4b-default-rtdb.asia-southeast1.firebasedatabase.app/",
+    projectId: "easygo-10f4b",
+    storageBucket: "easygo-10f4b.firebasestorage.app",
+    messagingSenderId: "197660067542",
+    appId: "1:197660067542:web:6c616efb479b122f1f6b77"
+};
+
+// ==================== GLOBAL VARIABLES ====================
+let database;
+let isFirebaseConnected = false;
+let currentAdmin = null;
+let selectedOrderId = null;
+let selectedOrderData = null;
+let orderListeners = [];
+let currentFilter = 'all';
+let whatsappNotificationData = null;
+
+// Delivery partner info
+const DELIVERY_PHONE = "917651837322";
+const DELIVERY_NAME = "Nishant";
+const ADMIN_PHONE = "917651837322";
+
+// ==================== FIREBASE INITIALIZATION ====================
+function initializeFirebase() {
+    try {
+        const app = firebase.initializeApp(firebaseConfig);
+        database = firebase.database();
         
-        sampleOrders.forEach(async (order) => {
-            try {
-                const newOrderRef = database.ref('orders').push();
-                await newOrderRef.set(order);
-                console.log("Sample order added:", order.orderId);
-            } catch (error) {
-                console.error("Error adding sample order:", error);
+        // Monitor connection status
+        database.ref(".info/connected").on("value", function(snap) {
+            const statusElement = document.getElementById('firebaseStatus');
+            
+            if (snap.val() === true) {
+                isFirebaseConnected = true;
+                statusElement.textContent = "✅ Firebase Connected";
+                statusElement.className = "firebase-status bg-green-500 text-white";
+                document.getElementById('realtime-status').textContent = "🟢 Live";
+                
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    statusElement.classList.add('hidden');
+                }, 3000);
+                
+                console.log("Firebase connected - Real-time updates active");
+            } else {
+                isFirebaseConnected = false;
+                statusElement.textContent = "❌ Firebase Disconnected";
+                statusElement.className = "firebase-status bg-red-500 text-white";
+                statusElement.classList.remove('hidden');
+                document.getElementById('realtime-status').textContent = "🔴 Offline";
             }
         });
         
-        showNotification('success', 'Sample Data Added', '2 sample orders added to database');
+        // Show initial connecting status
+        const statusElement = document.getElementById('firebaseStatus');
+        statusElement.classList.remove('hidden');
+        statusElement.textContent = "🔄 Connecting to Firebase...";
+        statusElement.className = "firebase-status bg-yellow-500 text-white";
+        
+        return true;
+    } catch (error) {
+        console.error("Firebase initialization error:", error);
+        document.getElementById('firebaseStatus').classList.add('hidden');
+        return false;
     }
+}
 
-    // ==================== DATA EXPORT ====================
-    async function exportOrdersData() {
-        if (!isFirebaseConnected) {
-            showNotification('error', 'Database Error', 'Cannot export data');
+// ==================== ADMIN AUTHENTICATION ====================
+function loginAdmin() {
+    const pin = document.getElementById('admin-pin').value;
+    
+    if (pin === "8008") {
+        currentAdmin = {
+            name: "Admin User",
+            loggedInAt: Date.now()
+        };
+        
+        // Store in localStorage
+        localStorage.setItem('easygo-admin-logged-in', 'true');
+        localStorage.setItem('easygo-admin-name', currentAdmin.name);
+        
+        // Show dashboard
+        document.getElementById('login-section').classList.add('hidden');
+        document.getElementById('dashboard-section').classList.remove('hidden');
+        
+        // Initialize Firebase if not already
+        if (!database) {
+            initializeFirebase();
+        }
+        
+        // Setup real-time listeners
+        setupOrderListeners();
+        
+        // Load initial data
+        updateStats();
+        
+        // Update time
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 1000);
+        
+        // Show notification
+        showNotification('success', 'Login Successful', 'Welcome to EasyGo Admin Dashboard');
+        
+    } else {
+        alert('Invalid PIN. Please try again.');
+        document.getElementById('admin-pin').value = '';
+        document.getElementById('admin-pin').focus();
+    }
+}
+
+function logoutAdmin() {
+    // Clear all listeners
+    orderListeners.forEach(listener => {
+        if (listener) listener.off();
+    });
+    orderListeners = [];
+    
+    // Clear data
+    currentAdmin = null;
+    selectedOrderId = null;
+    selectedOrderData = null;
+    
+    // Clear localStorage
+    localStorage.removeItem('easygo-admin-logged-in');
+    localStorage.removeItem('easygo-admin-name');
+    
+    // Show login screen
+    document.getElementById('login-section').classList.remove('hidden');
+    document.getElementById('dashboard-section').classList.add('hidden');
+    
+    // Clear input
+    document.getElementById('admin-pin').value = '';
+    
+    showNotification('info', 'Logged Out', 'You have been logged out successfully');
+}
+
+// ==================== REAL-TIME ORDER LISTENERS ====================
+function setupOrderListeners() {
+    if (!isFirebaseConnected) {
+        console.warn("Firebase not connected, cannot setup listeners");
+        setTimeout(setupOrderListeners, 3000);
+        return;
+    }
+    
+    console.log("Setting up Firebase order listeners...");
+    
+    // Listen for all orders (active ones)
+    const ordersListener = database.ref('orders').on('value', function(snapshot) {
+        const orders = snapshot.val();
+        if (!orders) {
+            document.getElementById('orders-container').innerHTML = `
+                <div class="text-center py-12">
+                    <div class="text-4xl mb-4">📭</div>
+                    <p class="text-gray-500 font-medium">No active orders yet</p>
+                    <p class="text-sm text-gray-400 mt-2">Orders will appear here automatically</p>
+                </div>
+            `;
             return;
         }
         
-        try {
-            const snapshot = await database.ref('orders').once('value');
-            const orders = snapshot.val();
+        // Convert to array and sort by newest first
+        const ordersArray = Object.entries(orders).map(([id, data]) => ({ id, ...data }));
+        ordersArray.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        
+        // Filter active orders (not delivered or cancelled)
+        const activeOrders = ordersArray.filter(order => 
+            order.status && !['delivered', 'cancelled'].includes(order.status)
+        );
+        
+        // Update active count
+        document.getElementById('active-count').textContent = `${activeOrders.length} orders`;
+        document.getElementById('active-orders-count').textContent = activeOrders.length;
+        
+        // Render orders
+        renderOrders(activeOrders);
+        
+        // Update stats
+        updateStats();
+        
+        // Update selected order if it exists
+        if (selectedOrderId && orders[selectedOrderId]) {
+            selectedOrderData = orders[selectedOrderId];
+            updateOrderDetails(selectedOrderData);
+        }
+    });
+    orderListeners.push(ordersListener);
+}
+
+// ==================== ORDER MANAGEMENT FUNCTIONS ====================
+function renderOrders(orders) {
+    const container = document.getElementById('orders-container');
+    
+    if (orders.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <div class="text-4xl mb-4">📭</div>
+                <p class="text-gray-500 font-medium">No active orders</p>
+                <p class="text-sm text-gray-400 mt-2">New orders will appear here automatically</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    orders.forEach(order => {
+        const status = order.status || 'pending';
+        const orderTime = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        }) : 'Just now';
+        
+        html += `
+            <div class="order-card status-${status} bg-white p-4 rounded-xl cursor-pointer shadow-sm" 
+                 data-status="${status}"
+                 data-order-id="${order.id}"
+                 onclick="selectOrder('${order.id}', this)">
+                
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="font-bold text-lg">#${order.orderId || order.id.substring(0, 8)}</span>
+                            <span class="badge-${status} px-2 py-1 rounded-full text-xs font-bold">${status}</span>
+                        </div>
+                        <p class="font-medium">${order.customerName || 'Customer'}</p>
+                        <p class="text-sm text-gray-600">${order.customerPhone || 'No phone'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-xl">₹${order.totalAmount || 0}</p>
+                        <p class="text-sm text-gray-500">${orderTime}</p>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs px-2 py-1 rounded bg-gray-100">
+                            ${order.deliveryMode === 'delivery' ? '🛵 Delivery' : '🏪 Takeaway'}
+                        </span>
+                        <span class="text-xs text-gray-600">
+                            ${order.items ? order.items.length + ' item(s)' : '0 items'}
+                        </span>
+                    </div>
+                    <button onclick="event.stopPropagation(); viewOrderDetails('${order.id}')" 
+                            class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                        👁️ View
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    
+    // Apply current filter
+    filterOrders(currentFilter);
+}
+
+function filterOrders(status) {
+    currentFilter = status;
+    const orders = document.querySelectorAll('.order-card');
+    
+    orders.forEach(order => {
+        if (status === 'all' || order.getAttribute('data-status') === status) {
+            order.style.display = 'block';
+        } else {
+            order.style.display = 'none';
+        }
+    });
+}
+
+function selectOrder(orderId, element = null) {
+    selectedOrderId = orderId;
+    
+    // Remove highlight from all cards
+    document.querySelectorAll('.order-card').forEach(card => {
+        card.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+    });
+    
+    // Highlight selected card
+    if (element) {
+        element.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+    }
+    
+    // Fetch order data from Firebase
+    database.ref('orders/' + orderId).once('value')
+        .then(snapshot => {
+            selectedOrderData = snapshot.val();
+            if (selectedOrderData) {
+                updateOrderDetails(selectedOrderData);
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching order:", error);
+        });
+}
+
+function updateOrderDetails(order) {
+    const detailsSection = document.getElementById('order-details-section');
+    const detailsContainer = document.getElementById('selected-order-details');
+    const quickSummary = document.getElementById('quick-summary');
+    
+    detailsSection.classList.remove('hidden');
+    quickSummary.classList.remove('hidden');
+    
+    // Update quick summary
+    document.getElementById('summary-order-id').textContent = order.orderId || order.id.substring(0, 8);
+    document.getElementById('summary-customer').textContent = order.customerName || 'Customer';
+    document.getElementById('summary-amount').textContent = `₹${order.totalAmount || 0}`;
+    document.getElementById('summary-status').textContent = order.status || 'pending';
+    document.getElementById('summary-status').className = `badge-${order.status || 'pending'} px-2 py-1 rounded text-xs`;
+    
+    let detailsHTML = `
+        <div class="space-y-4">
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div class="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                        <p class="text-sm text-blue-600">Order ID</p>
+                        <p class="font-bold">${order.orderId || order.id}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-blue-600">Payment ID</p>
+                        <p class="font-medium text-sm">${order.razorpayPaymentId || 'N/A'}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-blue-600">Customer</p>
+                        <p class="font-bold">${order.customerName}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-blue-600">Phone</p>
+                        <p class="font-bold">${order.customerPhone}</p>
+                    </div>
+                </div>
+            </div>
             
-            if (!orders) {
-                showNotification('warning', 'No Data', 'No orders to export');
+            <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <p class="font-bold mb-2">📦 Order Items (${order.items ? order.items.length : 0})</p>
+                <div class="space-y-2 max-h-40 overflow-y-auto">
+    `;
+    
+    if (order.items && order.items.length > 0) {
+        order.items.forEach(item => {
+            const itemTotal = parseFloat(item.price || 0) * (parseInt(item.quantity) || 1);
+            detailsHTML += `
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <div>
+                        <p class="font-medium">${item.name}</p>
+                        <p class="text-sm text-gray-600">${item.quantity} × ${item.size || item.pack || 'Regular'}</p>
+                    </div>
+                    <span class="font-bold">₹${itemTotal.toFixed(2)}</span>
+                </div>
+            `;
+        });
+    } else {
+        detailsHTML += `<p class="text-gray-500">No items found</p>`;
+    }
+    
+    detailsHTML += `
+                </div>
+            </div>
+            
+            <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+                <p class="font-bold mb-2">💰 Payment Details</p>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span>Total Amount:</span>
+                        <span class="font-bold text-green-600">₹${order.totalAmount || 0}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Payment Method:</span>
+                        <span class="font-medium">${order.paymentMethod || 'Razorpay'}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Delivery Type:</span>
+                        <span class="font-medium">${order.deliveryMode === 'delivery' ? '🛵 Home Delivery' : '🏪 Takeaway'}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                <p class="font-bold mb-2">📍 ${order.deliveryMode === 'delivery' ? 'Delivery Address' : 'Pickup Details'}</p>
+                <p class="text-sm">${order.address || 'No address provided'}</p>
+                <p class="text-sm text-gray-600 mt-2">📅 Ordered: ${new Date(order.createdAt || Date.now()).toLocaleString()}</p>
+            </div>
+            
+            <div class="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                <p class="font-bold mb-2">🔐 Verification OTP</p>
+                <p class="text-3xl font-bold text-center text-purple-600">${order.otp || '000000'}</p>
+                <p class="text-sm text-center text-gray-600 mt-2">Share this OTP with delivery partner</p>
+            </div>
+        </div>
+    `;
+    
+    detailsContainer.innerHTML = detailsHTML;
+}
+
+function clearSelectedOrder() {
+    selectedOrderId = null;
+    selectedOrderData = null;
+    document.getElementById('order-details-section').classList.add('hidden');
+    document.getElementById('quick-summary').classList.add('hidden');
+    
+    // Remove highlight from all cards
+    document.querySelectorAll('.order-card').forEach(card => {
+        card.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+    });
+}
+
+function viewOrderDetails(orderId) {
+    database.ref('orders/' + orderId).once('value')
+        .then(snapshot => {
+            const order = snapshot.val();
+            if (order) {
+                showCompleteOrderDetails(order, orderId);
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching order details:", error);
+        });
+}
+
+function showCompleteOrderDetails(order, orderId) {
+    const modal = document.getElementById('details-modal');
+    const container = document.getElementById('modal-order-details');
+    
+    let detailsHTML = `
+        <div class="space-y-6">
+            <!-- Order Header -->
+            <div class="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl p-6">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h4 class="text-2xl font-bold">Order #${order.orderId || orderId.substring(0, 8)}</h4>
+                        <p class="text-blue-100">${new Date(order.createdAt || Date.now()).toLocaleString()}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-3xl font-bold">₹${order.totalAmount || 0}</p>
+                        <p class="text-blue-100">${order.paymentMethod || 'Razorpay'}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Customer Details -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white border border-gray-200 rounded-xl p-5">
+                    <h5 class="font-bold text-lg mb-4">👤 Customer Information</h5>
+                    <div class="space-y-3">
+                        <div>
+                            <p class="text-sm text-gray-600">Full Name</p>
+                            <p class="font-medium">${order.customerName || 'Customer'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600">Phone Number</p>
+                            <p class="font-medium">${order.customerPhone || 'Not provided'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600">Order Type</p>
+                            <p class="font-medium">${order.deliveryMode === 'delivery' ? '🛵 Home Delivery' : '🏪 Takeaway'}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white border border-gray-200 rounded-xl p-5">
+                    <h5 class="font-bold text-lg mb-4">📍 ${order.deliveryMode === 'delivery' ? 'Delivery Address' : 'Pickup Location'}</h5>
+                    <div class="space-y-3">
+                        <div>
+                            <p class="text-sm text-gray-600">Address</p>
+                            <p class="font-medium">${order.address || 'Not provided'}</p>
+                        </div>
+                        ${order.deliveryMode === 'delivery' ? `
+                            <div>
+                                <p class="text-sm text-gray-600">Delivery Partner</p>
+                                <p class="font-medium">${order.deliveryPartner || 'Not assigned'}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Partner Contact</p>
+                                <p class="font-medium">${order.deliveryPartnerPhone || 'Not assigned'}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Order Items -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <h5 class="font-bold text-lg mb-4">📦 Order Items</h5>
+                <div class="space-y-3">
+    `;
+    
+    if (order.items && order.items.length > 0) {
+        order.items.forEach(item => {
+            const itemTotal = parseFloat(item.price || 0) * (parseInt(item.quantity) || 1);
+            detailsHTML += `
+                <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                    <div class="flex-1">
+                        <p class="font-medium">${item.name}</p>
+                        <div class="flex gap-4 mt-1">
+                            <span class="text-sm text-gray-600">Qty: ${item.quantity || 1}</span>
+                            <span class="text-sm text-gray-600">Size: ${item.size || item.pack || 'Regular'}</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold">₹${itemTotal.toFixed(2)}</p>
+                        <p class="text-sm text-gray-600">₹${parseFloat(item.price || 0).toFixed(2)} each</p>
+                    </div>
+                </div>
+            `;
+        });
+    } else {
+        detailsHTML += `<p class="text-gray-500">No items in this order</p>`;
+    }
+    
+    detailsHTML += `
+                </div>
+            </div>
+            
+            <!-- Payment Breakdown -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <h5 class="font-bold text-lg mb-4">💰 Payment Breakdown</h5>
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span>Subtotal:</span>
+                        <span>₹${order.subtotal || order.totalAmount || 0}</span>
+                    </div>
+                    ${order.deliveryMode === 'delivery' ? `
+                        <div class="flex justify-between">
+                            <span>Delivery Charge:</span>
+                            <span>₹${order.deliveryCharge || 49}</span>
+                        </div>
+                    ` : ''}
+                    <div class="flex justify-between">
+                        <span>Taxes:</span>
+                        <span>₹${order.taxAmount || 0}</span>
+                    </div>
+                    <div class="flex justify-between text-lg font-bold pt-3 border-t border-gray-300">
+                        <span>Total Amount:</span>
+                        <span class="text-green-600">₹${order.totalAmount || 0}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Verification Info -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <h5 class="font-bold text-lg mb-4">🔐 Verification Information</h5>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <p class="text-sm text-gray-600 mb-2">Order OTP</p>
+                        <p class="text-3xl font-bold text-center text-purple-600 bg-purple-50 p-4 rounded-lg">${order.otp || '000000'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600 mb-2">Payment ID</p>
+                        <p class="font-medium text-center bg-gray-50 p-4 rounded-lg break-all">${order.razorpayPaymentId || 'N/A'}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Order Status Timeline -->
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <h5 class="font-bold text-lg mb-4">⏱️ Order Timeline</h5>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span>Order Placed:</span>
+                        <span class="font-medium">${new Date(order.createdAt || Date.now()).toLocaleString()}</span>
+                    </div>
+                    ${order.confirmedAt ? `
+                        <div class="flex justify-between">
+                            <span>Order Confirmed:</span>
+                            <span class="font-medium">${new Date(order.confirmedAt).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${order.preparingAt ? `
+                        <div class="flex justify-between">
+                            <span>Food Preparing Started:</span>
+                            <span class="font-medium">${new Date(order.preparingAt).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${order.readyAt ? `
+                        <div class="flex justify-between">
+                            <span>Order Ready:</span>
+                            <span class="font-medium">${new Date(order.readyAt).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${order.outForDeliveryAt ? `
+                        <div class="flex justify-between">
+                            <span>Out for Delivery:</span>
+                            <span class="font-medium">${new Date(order.outForDeliveryAt).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${order.deliveredAt ? `
+                        <div class="flex justify-between">
+                            <span>Delivered:</span>
+                            <span class="font-medium">${new Date(order.deliveredAt).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = detailsHTML;
+    modal.classList.remove('hidden');
+}
+
+// ==================== ORDER STATUS UPDATES ====================
+function updateSelectedOrderStatus(newStatus) {
+    if (!selectedOrderId || !selectedOrderData) {
+        showNotification('warning', 'No Order Selected', 'Please select an order first');
+        return;
+    }
+    
+    if (!confirm(`Change order status to "${newStatus}"?`)) {
+        return;
+    }
+    
+    const updates = {
+        status: newStatus,
+        updatedAt: Date.now()
+    };
+    
+    // Add timestamp for specific status
+    switch(newStatus) {
+        case 'confirmed':
+            updates.confirmedAt = Date.now();
+            break;
+        case 'preparing':
+            updates.preparingAt = Date.now();
+            break;
+        case 'ready':
+            updates.readyAt = Date.now();
+            break;
+        case 'out-for-delivery':
+            updates.outForDeliveryAt = Date.now();
+            break;
+    }
+    
+    database.ref('orders/' + selectedOrderId).update(updates)
+        .then(() => {
+            showNotification('success', 'Status Updated', `Order status changed to ${newStatus}`);
+            
+            // If status is out-for-delivery, assign delivery partner
+            if (newStatus === 'out-for-delivery') {
+                assignDeliveryPartner(selectedOrderId);
+            }
+            
+            // Show WhatsApp notification option
+            if (['preparing', 'ready', 'out-for-delivery'].includes(newStatus)) {
+                showWhatsAppModal(newStatus);
+            }
+        })
+        .catch(error => {
+            console.error("Error updating order status:", error);
+            showNotification('error', 'Update Failed', 'Failed to update order status');
+        });
+}
+
+function assignDeliveryPartner(orderId) {
+    const deliveryData = {
+        deliveryPartner: DELIVERY_NAME,
+        deliveryPartnerPhone: DELIVERY_PHONE,
+        deliveryAssignedAt: Date.now()
+    };
+    
+    database.ref('orders/' + orderId).update(deliveryData)
+        .then(() => {
+            console.log("Delivery partner assigned");
+        })
+        .catch(error => {
+            console.error("Error assigning delivery partner:", error);
+        });
+}
+
+// ==================== DELIVERY MANAGEMENT ====================
+function showDeliveryModal() {
+    if (!selectedOrderId || !selectedOrderData) {
+        showNotification('warning', 'No Order Selected', 'Please select an order first');
+        return;
+    }
+    
+    document.getElementById('delivery-modal').classList.remove('hidden');
+}
+
+function confirmDelivery() {
+    const otp = document.getElementById('delivery-otp').value;
+    const partnerName = document.getElementById('delivery-partner-name').value;
+    const partnerPhone = document.getElementById('delivery-partner-phone').value;
+    
+    if (!otp || otp.length !== 6) {
+        showNotification('warning', 'Invalid OTP', 'Please enter 6-digit OTP');
+        return;
+    }
+    
+    // For testing, accept 800880 as universal OTP
+    if (otp !== selectedOrderData.otp && otp !== '800880') {
+        showNotification('error', 'OTP Mismatch', 'Invalid OTP. Please check and try again.');
+        return;
+    }
+    
+    const updates = {
+        status: 'delivered',
+        deliveredAt: Date.now(),
+        deliveryPartner: partnerName || DELIVERY_NAME,
+        deliveryPartnerPhone: partnerPhone || DELIVERY_PHONE,
+        deliveryOTP: otp,
+        updatedAt: Date.now()
+    };
+    
+    database.ref('orders/' + selectedOrderId).update(updates)
+        .then(() => {
+            showNotification('success', 'Delivery Confirmed', 'Order marked as delivered');
+            closeDeliveryModal();
+            
+            // Move to order history
+            moveToOrderHistory(selectedOrderId);
+            
+            // Send delivery confirmation WhatsApp
+            sendDeliveryConfirmation(selectedOrderData, partnerName, otp);
+        })
+        .catch(error => {
+            console.error("Error confirming delivery:", error);
+            showNotification('error', 'Delivery Failed', 'Failed to update delivery status');
+        });
+}
+
+function moveToOrderHistory(orderId) {
+    // This function moves completed orders to a separate history node
+    database.ref('orders/' + orderId).once('value')
+        .then(snapshot => {
+            const orderData = snapshot.val();
+            if (orderData) {
+                // Add to history
+                database.ref('orderHistory/' + orderId).set(orderData)
+                    .then(() => {
+                        console.log("Order moved to history");
+                    })
+                    .catch(error => {
+                        console.error("Error moving to history:", error);
+                    });
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching order for history:", error);
+        });
+}
+
+function closeDeliveryModal() {
+    document.getElementById('delivery-modal').classList.add('hidden');
+    document.getElementById('delivery-otp').value = '';
+}
+
+// ==================== ORDER CANCELLATION ====================
+function showCancelModal() {
+    if (!selectedOrderId || !selectedOrderData) {
+        showNotification('warning', 'No Order Selected', 'Please select an order first');
+        return;
+    }
+    
+    document.getElementById('cancel-modal').classList.remove('hidden');
+}
+
+function confirmCancel() {
+    const reason = document.getElementById('cancel-reason').value || 'No reason provided';
+    
+    const updates = {
+        status: 'cancelled',
+        cancelledAt: Date.now(),
+        cancelReason: reason,
+        updatedAt: Date.now()
+    };
+    
+    database.ref('orders/' + selectedOrderId).update(updates)
+        .then(() => {
+            showNotification('success', 'Order Cancelled', 'Order has been cancelled');
+            closeCancelModal();
+            
+            // Initiate refund process
+            initiateRefund(selectedOrderData);
+            
+            // Send cancellation notifications
+            sendCancellationNotifications(selectedOrderData, reason);
+            
+            // Move to order history
+            moveToOrderHistory(selectedOrderId);
+        })
+        .catch(error => {
+            console.error("Error cancelling order:", error);
+            showNotification('error', 'Cancellation Failed', 'Failed to cancel order');
+        });
+}
+
+function initiateRefund(order) {
+    // Create refund record
+    const refundRecord = {
+        orderId: order.orderId || selectedOrderId,
+        paymentId: order.razorpayPaymentId,
+        amount: order.totalAmount,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        status: 'pending',
+        initiatedAt: Date.now(),
+        expectedDate: Date.now() + 5 * 24 * 60 * 60 * 1000 // 5 days
+    };
+    
+    database.ref('refunds/' + (order.orderId || selectedOrderId)).set(refundRecord)
+        .then(() => {
+            console.log("Refund initiated");
+        })
+        .catch(error => {
+            console.error("Error creating refund record:", error);
+        });
+}
+
+function closeCancelModal() {
+    document.getElementById('cancel-modal').classList.add('hidden');
+    document.getElementById('cancel-reason').value = '';
+}
+
+// ==================== WHATSAPP NOTIFICATIONS ====================
+function notifyCustomer(status) {
+    if (!selectedOrderId || !selectedOrderData) {
+        showNotification('warning', 'No Order Selected', 'Please select an order first');
+        return;
+    }
+    
+    showWhatsAppModal(status);
+}
+
+function showWhatsAppModal(status) {
+    if (!selectedOrderData) return;
+    
+    const messages = {
+        'preparing': {
+            title: 'Food Preparation Started',
+            description: 'Customer will be notified that food is being prepared',
+            message: `👨‍🍳 *EasyGo Order Update* 👨‍🍳%0A%0AYour order #${selectedOrderData.orderId || selectedOrderId.substring(0, 8)} is being prepared.%0AEstimated ready time: 15-20 minutes.%0A%0AThank you for choosing EasyGo!`
+        },
+        'ready': {
+            title: 'Order is Ready',
+            description: 'Customer will be notified that order is ready',
+            message: `✅ *EasyGo Order Update* ✅%0A%0AYour order #${selectedOrderData.orderId || selectedOrderId.substring(0, 8)} is ready!%0A%0APlease ${selectedOrderData.deliveryMode === 'delivery' ? 'wait for delivery' : 'pick up from restaurant'}.%0A%0AThank you for choosing EasyGo!`
+        },
+        'out-for-delivery': {
+            title: 'Out for Delivery',
+            description: 'Customer will be notified that order is out for delivery',
+            message: `🛵 *EasyGo Order Update* 🛵%0A%0AYour order #${selectedOrderData.orderId || selectedOrderId.substring(0, 8)} is out for delivery!%0ADelivery partner: ${DELIVERY_NAME}%0AEstimated arrival: 25-30 minutes.%0A%0APlease keep your OTP ready for delivery confirmation.`
+        }
+    };
+    
+    if (messages[status]) {
+        const message = messages[status];
+        whatsappNotificationData = {
+            message: message.message,
+            phone: selectedOrderData.customerPhone
+        };
+        
+        document.getElementById('whatsapp-message-title').textContent = message.title;
+        document.getElementById('whatsapp-message-desc').textContent = message.description;
+        document.getElementById('whatsapp-modal').classList.remove('hidden');
+    }
+}
+
+function sendWhatsAppNow() {
+    if (!whatsappNotificationData || !whatsappNotificationData.phone) {
+        showNotification('error', 'No Phone Number', 'Customer phone number not available');
+        return;
+    }
+    
+    const whatsappURL = `https://wa.me/${whatsappNotificationData.phone}?text=${whatsappNotificationData.message}`;
+    window.open(whatsappURL, '_blank');
+    closeWhatsAppModal();
+}
+
+function sendDeliveryConfirmation(order, partnerName, otp) {
+    const message = `✅ *ORDER DELIVERED* ✅%0A%0AYour EasyGo order has been delivered!%0A%0A` +
+                   `*Order ID:* ${order.orderId || 'N/A'}%0A` +
+                   `*Amount:* ₹${order.totalAmount || 0}%0A` +
+                   `*Delivery Partner:* ${partnerName || DELIVERY_NAME}%0A` +
+                   `*OTP Verified:* ${otp}%0A%0A` +
+                   `Please rate your experience:%0A` +
+                   `https://www.google.com/maps/place/EasyGo/@22.7767506,75.9581962,17z`;
+    
+    const whatsappURL = `https://wa.me/${order.customerPhone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappURL, '_blank');
+    
+    // Also notify admin
+    const adminMessage = `✅ *DELIVERY CONFIRMED* ✅%0A%0AOrder #${order.orderId || 'N/A'} delivered.%0A%0A` +
+                        `*Customer:* ${order.customerName}%0A` +
+                        `*Amount:* ₹${order.totalAmount || 0}%0A` +
+                        `*Delivery Partner:* ${partnerName || DELIVERY_NAME}%0A` +
+                        `*OTP:* ${otp}%0A` +
+                        `*Time:* ${new Date().toLocaleTimeString()}`;
+    
+    const adminWhatsappURL = `https://wa.me/${ADMIN_PHONE}?text=${encodeURIComponent(adminMessage)}`;
+    window.open(adminWhatsappURL, '_blank');
+}
+
+function sendCancellationNotifications(order, reason) {
+    // Notify customer
+    const customerMessage = `❌ *ORDER CANCELLED* ❌%0A%0AWe're sorry, but your order #${order.orderId || 'N/A'} has been cancelled.%0A%0A` +
+                           `*Refund Information:*%0AYour payment of ₹${order.totalAmount || 0} will be refunded within 5 working days.%0A%0A` +
+                           `*Reason:* ${reason}%0A%0A` +
+                           `For any queries, contact: +91 76518 37322`;
+    
+    const customerWhatsappURL = `https://wa.me/${order.customerPhone}?text=${encodeURIComponent(customerMessage)}`;
+    window.open(customerWhatsappURL, '_blank');
+    
+    // Notify admin
+    const adminMessage = `❌ *ORDER CANCELLED* ❌%0A%0AOrder #${order.orderId || 'N/A'} cancelled.%0A%0A` +
+                        `*Customer:* ${order.customerName}%0A` +
+                        `*Amount to Refund:* ₹${order.totalAmount || 0}%0A` +
+                        `*Payment ID:* ${order.razorpayPaymentId || 'N/A'}%0A` +
+                        `*Reason:* ${reason}%0A` +
+                        `*Time:* ${new Date().toLocaleTimeString()}`;
+    
+    const adminWhatsappURL = `https://wa.me/${ADMIN_PHONE}?text=${encodeURIComponent(adminMessage)}`;
+    window.open(adminWhatsappURL, '_blank');
+}
+
+function closeWhatsAppModal() {
+    document.getElementById('whatsapp-modal').classList.add('hidden');
+    whatsappNotificationData = null;
+}
+
+// ==================== UTILITY FUNCTIONS ====================
+function callDeliveryPartner() {
+    window.open(`tel:${DELIVERY_PHONE}`, '_blank');
+}
+
+function closeDetailsModal() {
+    document.getElementById('details-modal').classList.add('hidden');
+}
+
+function loadOrderHistory() {
+    if (!isFirebaseConnected) return;
+    
+    database.ref('orderHistory').once('value')
+        .then(snapshot => {
+            const history = snapshot.val();
+            const container = document.getElementById('order-history');
+            
+            if (!history) {
+                container.innerHTML = '<p class="text-center py-8 text-gray-500">No orders in history</p>';
                 return;
             }
             
-            // Convert to CSV
-            let csv = 'Order ID, Customer Name, Phone, Amount, Status, Delivery Mode, Payment Method, Created At\n';
+            // Convert to array and sort by date
+            const historyArray = Object.entries(history).map(([id, data]) => ({ id, ...data }));
+            historyArray.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
             
-            Object.entries(orders).forEach(([id, order]) => {
-                const date = new Date(order.createdAt).toLocaleString();
-                csv += `"${order.orderId || id}","${order.customerName || ''}","${order.customerPhone || ''}",${order.totalAmount || 0},"${order.status || ''}","${order.deliveryMode || ''}","${order.paymentMethod || ''}","${date}"\n`;
+            // Get today's history
+            const today = new Date().setHours(0, 0, 0, 0);
+            const todayHistory = historyArray.filter(order => 
+                order.createdAt >= today
+            );
+            
+            if (todayHistory.length === 0) {
+                container.innerHTML = '<p class="text-center py-8 text-gray-500">No orders today</p>';
+                return;
+            }
+            
+            let html = '';
+            todayHistory.slice(0, 10).forEach(order => {
+                const time = new Date(order.createdAt || Date.now()).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                const date = new Date(order.createdAt || Date.now()).toLocaleDateString();
+                
+                html += `
+                    <div class="flex justify-between items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors"
+                         onclick="viewOrderDetails('${order.id}')">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <p class="font-bold">${order.customerName || 'Customer'}</p>
+                                <span class="badge-${order.status} px-2 py-1 rounded text-xs">
+                                    ${order.status === 'delivered' ? '✅ Delivered' : 
+                                      order.status === 'cancelled' ? '❌ Cancelled' : order.status}
+                                </span>
+                            </div>
+                            <p class="text-sm text-gray-600">Order #${order.orderId || order.id.substring(0, 8)} • ${order.items ? order.items.length : 0} item(s)</p>
+                            <p class="text-xs text-gray-500 mt-1">${date} ${time}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-lg">₹${order.totalAmount || 0}</p>
+                            <p class="text-sm text-gray-600">${order.deliveryMode === 'delivery' ? '🛵' : '🏪'}</p>
+                        </div>
+                    </div>
+                `;
             });
             
-            // Create download link
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `easygo-orders-${new Date().toISOString().split('T')[0]}.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            
-            showNotification('success', 'Export Complete', 'Orders data exported as CSV');
-            
-        } catch (error) {
-            console.error("Error exporting data:", error);
-            showNotification('error', 'Export Failed', 'Could not export data');
-        }
-    }
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            console.error("Error loading order history:", error);
+        });
+}
 
-    // ==================== INITIALIZATION ====================
-    document.addEventListener('DOMContentLoaded', function() {
-        // Check if admin is already logged in
-        const isLoggedIn = localStorage.getItem('easygo-admin-logged-in') === 'true';
-        
-        if (isLoggedIn) {
-            // Auto login
-            currentAdmin = {
-                name: localStorage.getItem('easygo-admin-name') || 'Admin User'
-            };
-            
-            document.getElementById('login-section').classList.add('hidden');
-            document.getElementById('dashboard-section').classList.remove('hidden');
-            
-            // Initialize Firebase
-            initializeFirebase();
-            
-            // Setup dashboard
-            updateCurrentTime();
-            setInterval(updateCurrentTime, 1000);
-            
-            // Show loading notification
-            setTimeout(() => {
-                if (isFirebaseConnected) {
-                    setupOrderListeners();
-                    loadActiveOrders();
-                    loadOrderHistory();
-                    updateStats();
-                } else {
-                    // Retry after 2 seconds
-                    setTimeout(() => {
-                        if (database) {
-                            setupOrderListeners();
-                            loadActiveOrders();
-                            loadOrderHistory();
-                            updateStats();
-                        }
-                    }, 2000);
-                }
-            }, 1000);
-            
-        } else {
-            // Show login screen
-            document.getElementById('admin-pin').focus();
-        }
-        
-        // Add keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            // Ctrl + L to logout
-            if (e.ctrlKey && e.key === 'l') {
-                e.preventDefault();
-                logoutAdmin();
+function updateStats() {
+    if (!isFirebaseConnected) return;
+    
+    database.ref('orders').once('value')
+        .then(snapshot => {
+            const orders = snapshot.val();
+            if (!orders) {
+                document.getElementById('total-orders').textContent = '0';
+                document.getElementById('today-revenue').textContent = '₹0';
+                return;
             }
             
-            // Esc to close modals
-            if (e.key === 'Escape') {
-                closeDeliveryModal();
-                closeCancelModal();
-                closeDetailsModal();
-                closeWhatsAppModal();
-            }
+            const ordersArray = Object.values(orders);
             
-            // Ctrl + R to refresh
-            if (e.ctrlKey && e.key === 'r') {
-                e.preventDefault();
-                loadActiveOrders();
+            // Total orders count
+            document.getElementById('total-orders').textContent = ordersArray.length;
+            
+            // Today's revenue
+            const today = new Date().setHours(0, 0, 0, 0);
+            const todayOrders = ordersArray.filter(order => 
+                order.createdAt >= today && order.status !== 'cancelled'
+            );
+            const todayRevenue = todayOrders.reduce((sum, order) => sum + (parseFloat(order.totalAmount) || 0), 0);
+            document.getElementById('today-revenue').textContent = `₹${todayRevenue.toFixed(2)}`;
+        })
+        .catch(error => {
+            console.error("Error updating stats:", error);
+        });
+}
+
+function updateCurrentTime() {
+    const now = new Date();
+    document.getElementById('current-time').textContent = 
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function showNotification(type, title, message) {
+    const toast = document.getElementById('notification-toast');
+    const icon = document.getElementById('notification-icon');
+    const titleElement = document.getElementById('notification-title');
+    const messageElement = document.getElementById('notification-message');
+    
+    // Set colors based on type
+    let borderColor = 'border-green-500';
+    let iconText = '✅';
+    
+    switch(type) {
+        case 'success':
+            borderColor = 'border-green-500';
+            iconText = '✅';
+            break;
+        case 'error':
+            borderColor = 'border-red-500';
+            iconText = '❌';
+            break;
+        case 'warning':
+            borderColor = 'border-yellow-500';
+            iconText = '⚠️';
+            break;
+        case 'info':
+            borderColor = 'border-blue-500';
+            iconText = 'ℹ️';
+            break;
+    }
+    
+    // Update content
+    icon.textContent = iconText;
+    titleElement.textContent = title;
+    messageElement.textContent = message;
+    toast.className = `fixed top-4 right-4 z-50 bg-white rounded-xl shadow-xl p-4 max-w-sm border-l-4 ${borderColor}`;
+    
+    // Show toast
+    toast.classList.remove('hidden');
+    
+    // Hide after 3 seconds
+    setTimeout(() => {
+        toast.classList.add('hidden');
+    }, 3000);
+}
+
+// ==================== INITIALIZATION ====================
+window.addEventListener('DOMContentLoaded', () => {
+    // Check if admin is logged in
+    const isLoggedIn = localStorage.getItem('easygo-admin-logged-in');
+    if (isLoggedIn === 'true') {
+        document.getElementById('login-section').classList.add('hidden');
+        document.getElementById('dashboard-section').classList.remove('hidden');
+        
+        // Initialize Firebase
+        initializeFirebase();
+        
+        // Setup listeners after Firebase is ready
+        setTimeout(() => {
+            if (isFirebaseConnected) {
+                setupOrderListeners();
                 loadOrderHistory();
                 updateStats();
-                showNotification('info', 'Refreshed', 'Data refreshed successfully');
             }
-        });
+        }, 1000);
         
-        // Focus PIN field on page load
-        document.getElementById('admin-pin')?.focus();
-    });
-
-    // ==================== DEBUG FUNCTIONS ====================
-    // For testing - add a test button to the UI
-    function addTestButton() {
-        const header = document.querySelector('.flex.justify-between.items-start');
-        if (header) {
-            const testDiv = document.createElement('div');
-            testDiv.className = 'flex items-center gap-2';
-            testDiv.innerHTML = `
-                <button onclick="addSampleOrders()" 
-                        class="px-4 py-2 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors font-bold shadow text-sm">
-                    <i class="fas fa-vial mr-2"></i> Add Test Orders
-                </button>
-                <button onclick="exportOrdersData()" 
-                        class="px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-bold shadow text-sm">
-                    <i class="fas fa-download mr-2"></i> Export CSV
-                </button>
-            `;
-            header.appendChild(testDiv);
-        }
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 1000);
     }
     
-    // Call this after dashboard loads
-    setTimeout(addTestButton, 2000);
-
-    // ==================== ERROR HANDLING ====================
-    window.addEventListener('error', function(e) {
-        console.error('Global error:', e.error);
-        showNotification('error', 'Application Error', 'Something went wrong. Please refresh.');
-    });
-
-    // Prevent accidental refresh
-    window.addEventListener('beforeunload', function(e) {
-        if (currentAdmin) {
-            e.preventDefault();
-            e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+    // Focus on PIN input
+    document.getElementById('admin-pin').focus();
+    
+    // Handle Enter key in login
+    document.getElementById('admin-pin').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            loginAdmin();
         }
     });
-
-    // ==================== PUBLIC FUNCTIONS ====================
-    // Make functions available globally
-    window.loginAdmin = loginAdmin;
-    window.logoutAdmin = logoutAdmin;
-    window.filterOrders = filterOrders;
-    window.selectOrder = selectOrder;
-    window.clearSelectedOrder = clearSelectedOrder;
-    window.updateSelectedOrderStatus = updateSelectedOrderStatus;
-    window.showDeliveryModal = showDeliveryModal;
-    window.closeDeliveryModal = closeDeliveryModal;
-    window.confirmDelivery = confirmDelivery;
-    window.showCancelModal = showCancelModal;
-    window.closeCancelModal = closeCancelModal;
-    window.confirmCancel = confirmCancel;
-    window.notifyCustomer = notifyCustomer;
-    window.sendWhatsAppNow = sendWhatsAppNow;
-    window.closeWhatsAppModal = closeWhatsAppModal;
-    window.viewOrderDetails = viewOrderDetails;
-    window.closeDetailsModal = closeDetailsModal;
-    window.loadOrderHistory = loadOrderHistory;
-    window.addSampleOrders = addSampleOrders;
-    window.exportOrdersData = exportOrdersData;
+});
 </script>
-
-<!-- Add test buttons to dashboard -->
-<script>
-    // Add test buttons after dashboard loads
-    setTimeout(() => {
-        const quickActions = document.querySelector('.space-y-8');
-        if (quickActions) {
-            const testCard = document.createElement('div');
-            testCard.className = 'bg-white rounded-2xl shadow-lg p-6 border border-gray-100';
-            testCard.innerHTML = `
-                <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <i class="fas fa-flask text-purple-500"></i>
-                    Developer Tools
-                </h2>
-                <div class="grid grid-cols-2 gap-2">
-                    <button onclick="addSampleOrders()" 
-                            class="p-3 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-colors">
-                        <i class="fas fa-vial mr-2"></i>Add Test Orders
-                    </button>
-                    <button onclick="exportOrdersData()" 
-                            class="p-3 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors">
-                        <i class="fas fa-download mr-2"></i>Export CSV
-                    </button>
-                    <button onclick="clearAllOrders()" 
-                            class="p-3 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors">
-                        <i class="fas fa-trash mr-2"></i>Clear All
-                    </button>
-                    <button onclick="testNotification()" 
-                            class="p-3 bg-yellow-100 text-yellow-700 rounded-xl hover:bg-yellow-200 transition-colors">
-                        <i class="fas fa-bell mr-2"></i>Test Notify
-                    </button>
-                </div>
-            `;
-            quickActions.appendChild(testCard);
-        }
-    }, 3000);
-    
-    // Additional test functions
-    async function clearAllOrders() {
-        if (!confirm('Are you sure you want to delete ALL orders? This cannot be undone!')) {
-            return;
-        }
-        
-        try {
-            await database.ref('orders').remove();
-            showNotification('success', 'Database Cleared', 'All orders have been deleted');
-            loadActiveOrders();
-            loadOrderHistory();
-            updateStats();
-        } catch (error) {
-            showNotification('error', 'Clear Failed', 'Could not clear database');
-        }
-    }
-    
-    function testNotification() {
-        const types = ['success', 'error', 'warning', 'info'];
-        const type = types[Math.floor(Math.random() * types.length)];
-        showNotification(type, 'Test Notification', 'This is a test notification to check the notification system.');
-    }
-</script>
-
 </body>
 </html>
