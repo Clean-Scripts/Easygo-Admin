@@ -1,135 +1,320 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EasyGo | Admin Panel</title>
-    
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-    
-    <!-- Your existing HTML structure -->
-    
-    <script>
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyCU_wJYBTwEwMZQ-iTYOjUZuEHEphA0DXc",
-            authDomain: "easygo-10f4b.firebaseapp.com",
-            projectId: "easygo-10f4b",
-            storageBucket: "easygo-10f4b.firebasestorage.app",
-            messagingSenderId: "197660067542",
-            appId: "1:197660067542:web:6c616efb479b122f1f6b77",
-            databaseURL: "https://easygo-10f4b-default-rtdb.asia-southeast1.firebasedatabase.app/"
-        };
+        // Update content
+        icon.className = iconClass;
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        toast.querySelector('.notification').className = `notification bg-white rounded-xl shadow-xl p-4 max-w-sm border-l-4 ${borderColor}`;
         
-        let database;
-        let isFirebaseConnected = false;
+        // Show notification
+        toast.classList.remove('hidden');
         
-        function initializeFirebase() {
+        // Auto hide after 4 seconds
+        setTimeout(() => {
+            toast.classList.add('hidden');
+        }, 4000);
+    }
+
+    // ==================== SAMPLE DATA GENERATION (FOR TESTING) ====================
+    function addSampleOrders() {
+        if (!isFirebaseConnected) {
+            showNotification('error', 'Database Error', 'Cannot add sample data');
+            return;
+        }
+        
+        const sampleOrders = [
+            {
+                orderId: "ORD-" + Date.now().toString().slice(-6),
+                customerName: "Rajesh Kumar",
+                customerPhone: "+919876543210",
+                customerEmail: "rajesh@example.com",
+                items: [
+                    { name: "Paneer Butter Masala", quantity: 2, price: 220, pack: "Family Pack" },
+                    { name: "Garlic Naan", quantity: 4, price: 40, pack: "Standard" },
+                    { name: "Coke", quantity: 2, price: 60, pack: "1.25L" }
+                ],
+                totalAmount: 660,
+                deliveryMode: "delivery",
+                address: "123 MG Road, Indore, MP 452001",
+                paymentMethod: "Razorpay",
+                paymentId: "pay_" + Math.random().toString(36).substr(2, 9),
+                status: "pending",
+                otp: "123456",
+                createdAt: Date.now() - 300000, // 5 minutes ago
+                updatedAt: Date.now() - 300000
+            },
+            {
+                orderId: "ORD-" + (Date.now() + 1000).toString().slice(-6),
+                customerName: "Priya Sharma",
+                customerPhone: "+919876543211",
+                customerEmail: "priya@example.com",
+                items: [
+                    { name: "Veg Biryani", quantity: 1, price: 180, pack: "Standard" },
+                    { name: "Raita", quantity: 1, price: 40, pack: "Standard" },
+                    { name: "Chocolate Lava Cake", quantity: 2, price: 120, pack: "Standard" }
+                ],
+                totalAmount: 340,
+                deliveryMode: "takeaway",
+                address: "Takeaway - Prime Square, Indore",
+                paymentMethod: "Razorpay",
+                paymentId: "pay_" + Math.random().toString(36).substr(2, 9),
+                status: "preparing",
+                otp: "654321",
+                createdAt: Date.now() - 600000, // 10 minutes ago
+                updatedAt: Date.now() - 120000
+            }
+        ];
+        
+        sampleOrders.forEach(async (order) => {
             try {
-                const app = firebase.initializeApp(firebaseConfig);
-                database = firebase.database();
-                
-                const connectedRef = database.ref(".info/connected");
-                connectedRef.on("value", function(snap) {
-                    isFirebaseConnected = snap.val() === true;
-                });
+                const newOrderRef = database.ref('orders').push();
+                await newOrderRef.set(order);
+                console.log("Sample order added:", order.orderId);
             } catch (error) {
-                console.error("Firebase error:", error);
-            }
-        }
-        
-        // Real-time order listener
-        function setupOrderListener() {
-            if (!isFirebaseConnected) return;
-            
-            // Listen for new orders
-            database.ref('orders').orderByChild('status').equalTo('pending')
-                .on('child_added', function(snapshot) {
-                    const order = snapshot.val();
-                    console.log("New order received:", order);
-                    // Update admin UI
-                    addNewOrderToUI(order, snapshot.key);
-                });
-            
-            // Listen for order updates
-            database.ref('orders').on('child_changed', function(snapshot) {
-                const order = snapshot.val();
-                console.log("Order updated:", order);
-                // Update admin UI
-                updateOrderInUI(order, snapshot.key);
-            });
-        }
-        
-        // Update order status in Firebase
-        async function updateOrderStatusInFirebase(orderId, status, updateData = {}) {
-            if (!isFirebaseConnected) return false;
-            
-            try {
-                await database.ref(`orders/${orderId}`).update({
-                    status: status,
-                    updatedAt: Date.now(),
-                    ...updateData
-                });
-                return true;
-            } catch (error) {
-                console.error("Error updating order status:", error);
-                return false;
-            }
-        }
-        
-        // Get active orders
-        async function getActiveOrdersFromFirebase() {
-            if (!isFirebaseConnected) return [];
-            
-            try {
-                const snapshot = await database.ref('orders')
-                    .orderByChild('status')
-                    .startAt('pending')
-                    .endAt('out-for-delivery')
-                    .once('value');
-                
-                return snapshot.val() ? Object.entries(snapshot.val()).map(([id, data]) => ({ id, ...data })) : [];
-            } catch (error) {
-                console.error("Error getting orders:", error);
-                return [];
-            }
-        }
-        
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeFirebase();
-            
-            // After login, setup real-time listeners
-            function loginAdmin() {
-                // Your existing login logic
-                
-                // Setup Firebase listeners
-                if (isFirebaseConnected) {
-                    setupOrderListener();
-                    loadOrdersFromFirebase();
-                }
-            }
-            
-            // Load orders from Firebase
-            async function loadOrdersFromFirebase() {
-                const orders = await getActiveOrdersFromFirebase();
-                // Update your UI with orders
-                renderOrders(orders);
-            }
-            
-            // Update your existing status update functions
-            function updateOrderStatus(orderId, status) {
-                // Your existing UI update logic
-                
-                // Update in Firebase
-                updateOrderStatusInFirebase(orderId, status, {
-                    updatedBy: 'admin',
-                    updatedByName: 'Admin User'
-                });
+                console.error("Error adding sample order:", error);
             }
         });
-    </script>
+        
+        showNotification('success', 'Sample Data Added', '2 sample orders added to database');
+    }
+
+    // ==================== DATA EXPORT ====================
+    async function exportOrdersData() {
+        if (!isFirebaseConnected) {
+            showNotification('error', 'Database Error', 'Cannot export data');
+            return;
+        }
+        
+        try {
+            const snapshot = await database.ref('orders').once('value');
+            const orders = snapshot.val();
+            
+            if (!orders) {
+                showNotification('warning', 'No Data', 'No orders to export');
+                return;
+            }
+            
+            // Convert to CSV
+            let csv = 'Order ID, Customer Name, Phone, Amount, Status, Delivery Mode, Payment Method, Created At\n';
+            
+            Object.entries(orders).forEach(([id, order]) => {
+                const date = new Date(order.createdAt).toLocaleString();
+                csv += `"${order.orderId || id}","${order.customerName || ''}","${order.customerPhone || ''}",${order.totalAmount || 0},"${order.status || ''}","${order.deliveryMode || ''}","${order.paymentMethod || ''}","${date}"\n`;
+            });
+            
+            // Create download link
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `easygo-orders-${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            showNotification('success', 'Export Complete', 'Orders data exported as CSV');
+            
+        } catch (error) {
+            console.error("Error exporting data:", error);
+            showNotification('error', 'Export Failed', 'Could not export data');
+        }
+    }
+
+    // ==================== INITIALIZATION ====================
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if admin is already logged in
+        const isLoggedIn = localStorage.getItem('easygo-admin-logged-in') === 'true';
+        
+        if (isLoggedIn) {
+            // Auto login
+            currentAdmin = {
+                name: localStorage.getItem('easygo-admin-name') || 'Admin User'
+            };
+            
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('dashboard-section').classList.remove('hidden');
+            
+            // Initialize Firebase
+            initializeFirebase();
+            
+            // Setup dashboard
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 1000);
+            
+            // Show loading notification
+            setTimeout(() => {
+                if (isFirebaseConnected) {
+                    setupOrderListeners();
+                    loadActiveOrders();
+                    loadOrderHistory();
+                    updateStats();
+                } else {
+                    // Retry after 2 seconds
+                    setTimeout(() => {
+                        if (database) {
+                            setupOrderListeners();
+                            loadActiveOrders();
+                            loadOrderHistory();
+                            updateStats();
+                        }
+                    }, 2000);
+                }
+            }, 1000);
+            
+        } else {
+            // Show login screen
+            document.getElementById('admin-pin').focus();
+        }
+        
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl + L to logout
+            if (e.ctrlKey && e.key === 'l') {
+                e.preventDefault();
+                logoutAdmin();
+            }
+            
+            // Esc to close modals
+            if (e.key === 'Escape') {
+                closeDeliveryModal();
+                closeCancelModal();
+                closeDetailsModal();
+                closeWhatsAppModal();
+            }
+            
+            // Ctrl + R to refresh
+            if (e.ctrlKey && e.key === 'r') {
+                e.preventDefault();
+                loadActiveOrders();
+                loadOrderHistory();
+                updateStats();
+                showNotification('info', 'Refreshed', 'Data refreshed successfully');
+            }
+        });
+        
+        // Focus PIN field on page load
+        document.getElementById('admin-pin')?.focus();
+    });
+
+    // ==================== DEBUG FUNCTIONS ====================
+    // For testing - add a test button to the UI
+    function addTestButton() {
+        const header = document.querySelector('.flex.justify-between.items-start');
+        if (header) {
+            const testDiv = document.createElement('div');
+            testDiv.className = 'flex items-center gap-2';
+            testDiv.innerHTML = `
+                <button onclick="addSampleOrders()" 
+                        class="px-4 py-2 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors font-bold shadow text-sm">
+                    <i class="fas fa-vial mr-2"></i> Add Test Orders
+                </button>
+                <button onclick="exportOrdersData()" 
+                        class="px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-bold shadow text-sm">
+                    <i class="fas fa-download mr-2"></i> Export CSV
+                </button>
+            `;
+            header.appendChild(testDiv);
+        }
+    }
+    
+    // Call this after dashboard loads
+    setTimeout(addTestButton, 2000);
+
+    // ==================== ERROR HANDLING ====================
+    window.addEventListener('error', function(e) {
+        console.error('Global error:', e.error);
+        showNotification('error', 'Application Error', 'Something went wrong. Please refresh.');
+    });
+
+    // Prevent accidental refresh
+    window.addEventListener('beforeunload', function(e) {
+        if (currentAdmin) {
+            e.preventDefault();
+            e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        }
+    });
+
+    // ==================== PUBLIC FUNCTIONS ====================
+    // Make functions available globally
+    window.loginAdmin = loginAdmin;
+    window.logoutAdmin = logoutAdmin;
+    window.filterOrders = filterOrders;
+    window.selectOrder = selectOrder;
+    window.clearSelectedOrder = clearSelectedOrder;
+    window.updateSelectedOrderStatus = updateSelectedOrderStatus;
+    window.showDeliveryModal = showDeliveryModal;
+    window.closeDeliveryModal = closeDeliveryModal;
+    window.confirmDelivery = confirmDelivery;
+    window.showCancelModal = showCancelModal;
+    window.closeCancelModal = closeCancelModal;
+    window.confirmCancel = confirmCancel;
+    window.notifyCustomer = notifyCustomer;
+    window.sendWhatsAppNow = sendWhatsAppNow;
+    window.closeWhatsAppModal = closeWhatsAppModal;
+    window.viewOrderDetails = viewOrderDetails;
+    window.closeDetailsModal = closeDetailsModal;
+    window.loadOrderHistory = loadOrderHistory;
+    window.addSampleOrders = addSampleOrders;
+    window.exportOrdersData = exportOrdersData;
+</script>
+
+<!-- Add test buttons to dashboard -->
+<script>
+    // Add test buttons after dashboard loads
+    setTimeout(() => {
+        const quickActions = document.querySelector('.space-y-8');
+        if (quickActions) {
+            const testCard = document.createElement('div');
+            testCard.className = 'bg-white rounded-2xl shadow-lg p-6 border border-gray-100';
+            testCard.innerHTML = `
+                <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <i class="fas fa-flask text-purple-500"></i>
+                    Developer Tools
+                </h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="addSampleOrders()" 
+                            class="p-3 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-colors">
+                        <i class="fas fa-vial mr-2"></i>Add Test Orders
+                    </button>
+                    <button onclick="exportOrdersData()" 
+                            class="p-3 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors">
+                        <i class="fas fa-download mr-2"></i>Export CSV
+                    </button>
+                    <button onclick="clearAllOrders()" 
+                            class="p-3 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors">
+                        <i class="fas fa-trash mr-2"></i>Clear All
+                    </button>
+                    <button onclick="testNotification()" 
+                            class="p-3 bg-yellow-100 text-yellow-700 rounded-xl hover:bg-yellow-200 transition-colors">
+                        <i class="fas fa-bell mr-2"></i>Test Notify
+                    </button>
+                </div>
+            `;
+            quickActions.appendChild(testCard);
+        }
+    }, 3000);
+    
+    // Additional test functions
+    async function clearAllOrders() {
+        if (!confirm('Are you sure you want to delete ALL orders? This cannot be undone!')) {
+            return;
+        }
+        
+        try {
+            await database.ref('orders').remove();
+            showNotification('success', 'Database Cleared', 'All orders have been deleted');
+            loadActiveOrders();
+            loadOrderHistory();
+            updateStats();
+        } catch (error) {
+            showNotification('error', 'Clear Failed', 'Could not clear database');
+        }
+    }
+    
+    function testNotification() {
+        const types = ['success', 'error', 'warning', 'info'];
+        const type = types[Math.floor(Math.random() * types.length)];
+        showNotification(type, 'Test Notification', 'This is a test notification to check the notification system.');
+    }
+</script>
+
 </body>
 </html>
