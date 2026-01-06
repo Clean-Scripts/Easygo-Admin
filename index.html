@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Clean-Scripts/EasyGo-Expense-Tracker/refs/heads/main/logo.png">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
@@ -23,7 +22,6 @@
         .modal-overlay { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         
-        /* Status badges */
         .badge-pending { background: #fef3c7; color: #92400e; }
         .badge-confirmed { background: #dbeafe; color: #1e40af; }
         .badge-preparing { background: #ede9fe; color: #5b21b6; }
@@ -32,7 +30,6 @@
         .badge-delivered { background: #d1fae5; color: #065f46; }
         .badge-cancelled { background: #fee2e2; color: #991b1b; }
         
-        /* Pulse animation for real-time updates */
         @keyframes pulse {
             0% { transform: scale(1); opacity: 1; }
             50% { transform: scale(1.05); opacity: 0.8; }
@@ -40,7 +37,6 @@
         }
         .pulse { animation: pulse 2s infinite; }
         
-        /* Firebase status indicator */
         .firebase-status {
             position: fixed;
             bottom: 20px;
@@ -53,6 +49,14 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             transition: all 0.3s;
         }
+        
+        .glow-notification {
+            animation: glow 1.5s infinite alternate;
+        }
+        @keyframes glow {
+            from { box-shadow: 0 0 10px #3b82f6; }
+            to { box-shadow: 0 0 20px #3b82f6, 0 0 30px #3b82f6; }
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -60,6 +64,22 @@
     <!-- Firebase Status Indicator -->
     <div id="firebaseStatus" class="firebase-status hidden">
         🔄 Connecting to Firebase...
+    </div>
+
+    <!-- New Order Notification -->
+    <div id="new-order-notification" class="fixed top-4 right-4 z-50 hidden">
+        <div class="bg-blue-500 text-white rounded-xl shadow-xl p-4 max-w-sm glow-notification">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🆕</span>
+                <div>
+                    <p class="font-bold">New Order Received!</p>
+                    <p id="new-order-details" class="text-sm opacity-90"></p>
+                </div>
+                <button onclick="closeNewOrderNotification()" class="ml-4 text-white hover:text-gray-200">
+                    ✕
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Admin Login -->
@@ -164,6 +184,7 @@
                         <div class="flex justify-between items-center mb-6">
                             <h2 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
                                 📦 Active Orders
+                                <span id="order-count-badge" class="bg-red-500 text-white text-xs px-2 py-1 rounded-full animate-pulse hidden">New!</span>
                             </h2>
                             <span id="active-count" class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold">0 orders</span>
                         </div>
@@ -178,6 +199,8 @@
                                     class="px-4 py-2 bg-blue-100 text-blue-800 rounded-xl font-bold text-sm">Confirmed</button>
                             <button onclick="filterOrders('preparing')" 
                                     class="px-4 py-2 bg-purple-100 text-purple-800 rounded-xl font-bold text-sm">Preparing</button>
+                            <button onclick="filterOrders('ready')" 
+                                    class="px-4 py-2 bg-green-100 text-green-800 rounded-xl font-bold text-sm">Ready</button>
                             <button onclick="filterOrders('out-for-delivery')" 
                                     class="px-4 py-2 bg-indigo-100 text-indigo-800 rounded-xl font-bold text-sm">Delivery</button>
                         </div>
@@ -234,9 +257,9 @@
                                         class="p-3 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-colors font-medium">
                                     ✅ Ready
                                 </button>
-                                <button onclick="updateSelectedOrderStatus('out-for-delivery')" 
+                                <button onclick="assignToRider()" 
                                         class="p-3 bg-indigo-50 text-indigo-700 rounded-xl hover:bg-indigo-100 transition-colors font-medium">
-                                    🛵 Out for Delivery
+                                    🛵 Assign Rider
                                 </button>
                                 <button onclick="showDeliveryModal()" 
                                         class="p-3 bg-emerald-50 text-emerald-700 rounded-xl hover:bg-emerald-100 transition-colors font-medium">
@@ -249,21 +272,16 @@
                             </div>
                         </div>
 
-                        <!-- Delivery Partner Info -->
-                        <div class="mb-8">
-                            <h3 class="font-bold mb-4 text-gray-700">🚚 Delivery Partner</h3>
+                        <!-- Rider Assignment -->
+                        <div class="mb-8" id="rider-assignment-section" style="display: none;">
+                            <h3 class="font-bold mb-4 text-gray-700">🚚 Assign to Rider</h3>
                             <div class="space-y-3">
-                                <div class="flex justify-between">
-                                    <span>Name:</span>
-                                    <span id="delivery-name" class="font-bold">Nishant</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span>Phone:</span>
-                                    <span id="delivery-phone" class="font-bold">+91 76518 37322</span>
-                                </div>
-                                <button onclick="callDeliveryPartner()" 
-                                        class="w-full p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
-                                    📞 Call Delivery Partner
+                                <select id="available-riders" class="w-full p-3 border border-gray-300 rounded-lg">
+                                    <option value="">Select a rider...</option>
+                                </select>
+                                <button onclick="confirmRiderAssignment()" 
+                                        class="w-full p-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                                    ✅ Assign Selected Rider
                                 </button>
                             </div>
                         </div>
@@ -351,7 +369,7 @@
                     <input type="text" id="delivery-partner-name" 
                            placeholder="Enter name" 
                            class="w-full p-3 border border-gray-300 rounded-lg"
-                           value="Nishant">
+                           value="">
                 </div>
                 
                 <div>
@@ -359,7 +377,7 @@
                     <input type="text" id="delivery-partner-phone" 
                            placeholder="Enter phone number" 
                            class="w-full p-3 border border-gray-300 rounded-lg"
-                           value="7651837322">
+                           value="">
                 </div>
                 
                 <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
@@ -499,11 +517,15 @@ let selectedOrderData = null;
 let orderListeners = [];
 let currentFilter = 'all';
 let whatsappNotificationData = null;
+let newOrdersCount = 0;
+let availableRiders = [];
 
 // Delivery partner info
-const DELIVERY_PHONE = "917651837322";
-const DELIVERY_NAME = "Nishant";
-const ADMIN_PHONE = "917651837322";
+const RESTAURANT_LOCATION = {
+    lat: 22.7767737,
+    lng: 75.9605483,
+    address: "Prime Square, Omaxe City 1, Indore"
+};
 
 // ==================== FIREBASE INITIALIZATION ====================
 function initializeFirebase() {
@@ -652,6 +674,16 @@ function setupOrderListeners() {
             order.status && !['delivered', 'cancelled'].includes(order.status)
         );
         
+        // Check for new pending orders
+        const newPendingOrders = ordersArray.filter(order => 
+            order.status === 'pending' && 
+            (!order.notifiedAt || (Date.now() - order.notifiedAt > 120000)) // 2 minutes
+        );
+        
+        if (newPendingOrders.length > 0) {
+            showNewOrderNotification(newPendingOrders[0]);
+        }
+        
         // Update active count
         document.getElementById('active-count').textContent = `${activeOrders.length} orders`;
         document.getElementById('active-orders-count').textContent = activeOrders.length;
@@ -669,6 +701,34 @@ function setupOrderListeners() {
         }
     });
     orderListeners.push(ordersListener);
+    
+    // Listen for available riders
+    const ridersListener = database.ref('riders').on('value', function(snapshot) {
+        const riders = snapshot.val();
+        availableRiders = riders ? Object.values(riders).filter(rider => 
+            rider.status === 'available' || rider.status === 'active'
+        ) : [];
+        updateRidersDropdown();
+    });
+    orderListeners.push(ridersListener);
+}
+
+function showNewOrderNotification(order) {
+    document.getElementById('new-order-details').textContent = 
+        `Order #${order.orderId || order.id.substring(0, 8)} from ${order.customerName}`;
+    document.getElementById('new-order-notification').classList.remove('hidden');
+    
+    // Mark as notified
+    database.ref('orders/' + order.id).update({
+        notifiedAt: Date.now()
+    });
+    
+    // Auto-hide after 10 seconds
+    setTimeout(closeNewOrderNotification, 10000);
+}
+
+function closeNewOrderNotification() {
+    document.getElementById('new-order-notification').classList.add('hidden');
 }
 
 // ==================== ORDER MANAGEMENT FUNCTIONS ====================
@@ -694,8 +754,11 @@ function renderOrders(orders) {
             minute: '2-digit' 
         }) : 'Just now';
         
+        // Check if order is new (less than 2 minutes old)
+        const isNew = order.createdAt && (Date.now() - order.createdAt < 120000);
+        
         html += `
-            <div class="order-card status-${status} bg-white p-4 rounded-xl cursor-pointer shadow-sm" 
+            <div class="order-card status-${status} bg-white p-4 rounded-xl cursor-pointer shadow-sm ${isNew ? 'ring-2 ring-blue-500' : ''}" 
                  data-status="${status}"
                  data-order-id="${order.id}"
                  onclick="selectOrder('${order.id}', this)">
@@ -705,6 +768,7 @@ function renderOrders(orders) {
                         <div class="flex items-center gap-2 mb-2">
                             <span class="font-bold text-lg">#${order.orderId || order.id.substring(0, 8)}</span>
                             <span class="badge-${status} px-2 py-1 rounded-full text-xs font-bold">${status}</span>
+                            ${isNew ? `<span class="bg-red-500 text-white text-xs px-2 py-1 rounded-full">NEW</span>` : ''}
                         </div>
                         <p class="font-medium">${order.customerName || 'Customer'}</p>
                         <p class="text-sm text-gray-600">${order.customerPhone || 'No phone'}</p>
@@ -723,6 +787,11 @@ function renderOrders(orders) {
                         <span class="text-xs text-gray-600">
                             ${order.items ? order.items.length + ' item(s)' : '0 items'}
                         </span>
+                        ${order.deliveryPartner ? `
+                            <span class="text-xs px-2 py-1 rounded bg-green-100">
+                                Rider: ${order.deliveryPartner}
+                            </span>
+                        ` : ''}
                     </div>
                     <button onclick="event.stopPropagation(); viewOrderDetails('${order.id}')" 
                             class="text-sm text-blue-600 hover:text-blue-800 font-medium">
@@ -782,6 +851,7 @@ function updateOrderDetails(order) {
     const detailsSection = document.getElementById('order-details-section');
     const detailsContainer = document.getElementById('selected-order-details');
     const quickSummary = document.getElementById('quick-summary');
+    const riderSection = document.getElementById('rider-assignment-section');
     
     detailsSection.classList.remove('hidden');
     quickSummary.classList.remove('hidden');
@@ -792,6 +862,19 @@ function updateOrderDetails(order) {
     document.getElementById('summary-amount').textContent = `₹${order.totalAmount || 0}`;
     document.getElementById('summary-status').textContent = order.status || 'pending';
     document.getElementById('summary-status').className = `badge-${order.status || 'pending'} px-2 py-1 rounded text-xs`;
+    
+    // Show/hide rider assignment section
+    if (order.status === 'ready' && order.deliveryMode === 'delivery' && !order.deliveryPartner) {
+        riderSection.style.display = 'block';
+    } else {
+        riderSection.style.display = 'none';
+    }
+    
+    // Set delivery partner info in modal if available
+    if (order.deliveryPartner) {
+        document.getElementById('delivery-partner-name').value = order.deliveryPartner;
+        document.getElementById('delivery-partner-phone').value = order.deliveryPartnerPhone || '';
+    }
     
     let detailsHTML = `
         <div class="space-y-4">
@@ -873,6 +956,25 @@ function updateOrderDetails(order) {
                 <p class="text-3xl font-bold text-center text-purple-600">${order.otp || '000000'}</p>
                 <p class="text-sm text-center text-gray-600 mt-2">Share this OTP with delivery partner</p>
             </div>
+            
+            ${order.deliveryPartner ? `
+                <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                    <p class="font-bold mb-2">🚚 Delivery Partner Info</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-indigo-600">Name</p>
+                            <p class="font-bold">${order.deliveryPartner}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-indigo-600">Phone</p>
+                            <p class="font-bold">${order.deliveryPartnerPhone || 'N/A'}</p>
+                        </div>
+                    </div>
+                    ${order.deliveryAssignedAt ? `
+                        <p class="text-sm text-gray-600 mt-2">Assigned: ${new Date(order.deliveryAssignedAt).toLocaleString()}</p>
+                    ` : ''}
+                </div>
+            ` : ''}
         </div>
     `;
     
@@ -907,6 +1009,9 @@ function viewOrderDetails(orderId) {
 function showCompleteOrderDetails(order, orderId) {
     const modal = document.getElementById('details-modal');
     const container = document.getElementById('modal-order-details');
+    
+    // Calculate delivery fee
+    const deliveryFee = order.deliveryMode === 'delivery' ? (order.totalAmount * 0.05) + ((order.totalAmount * 0.05) * 0.18) : 0;
     
     let detailsHTML = `
         <div class="space-y-6">
@@ -1011,6 +1116,18 @@ function showCompleteOrderDetails(order, orderId) {
                             <span>Delivery Charge:</span>
                             <span>₹${order.deliveryCharge || 49}</span>
                         </div>
+                        <div class="flex justify-between">
+                            <span>Platform Fee (5%):</span>
+                            <span>₹${(order.totalAmount * 0.05).toFixed(2)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>GST on Platform (18%):</span>
+                            <span>₹${((order.totalAmount * 0.05) * 0.18).toFixed(2)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Rider Earnings:</span>
+                            <span class="font-bold text-green-600">₹${deliveryFee.toFixed(2)}</span>
+                        </div>
                     ` : ''}
                     <div class="flex justify-between">
                         <span>Taxes:</span>
@@ -1064,10 +1181,28 @@ function showCompleteOrderDetails(order, orderId) {
                             <span class="font-medium">${new Date(order.readyAt).toLocaleString()}</span>
                         </div>
                     ` : ''}
-                    ${order.outForDeliveryAt ? `
+                    ${order.deliveryAssignedAt ? `
                         <div class="flex justify-between">
-                            <span>Out for Delivery:</span>
-                            <span class="font-medium">${new Date(order.outForDeliveryAt).toLocaleString()}</span>
+                            <span>Assigned to Rider:</span>
+                            <span class="font-medium">${new Date(order.deliveryAssignedAt).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${order.riderArrivedAt ? `
+                        <div class="flex justify-between">
+                            <span>Rider Arrived at Restaurant:</span>
+                            <span class="font-medium">${new Date(order.riderArrivedAt).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${order.pickedUpAt ? `
+                        <div class="flex justify-between">
+                            <span>Order Picked Up:</span>
+                            <span class="font-medium">${new Date(order.pickedUpAt).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${order.riderArrivedCustomerAt ? `
+                        <div class="flex justify-between">
+                            <span>Rider Arrived at Customer:</span>
+                            <span class="font-medium">${new Date(order.riderArrivedCustomerAt).toLocaleString()}</span>
                         </div>
                     ` : ''}
                     ${order.deliveredAt ? `
@@ -1105,15 +1240,31 @@ function updateSelectedOrderStatus(newStatus) {
     switch(newStatus) {
         case 'confirmed':
             updates.confirmedAt = Date.now();
+            // Wait 2 minutes before auto-cancelling if not accepted
+            setTimeout(() => {
+                database.ref('orders/' + selectedOrderId).once('value').then(snapshot => {
+                    const order = snapshot.val();
+                    if (order && order.status === 'confirmed') {
+                        // Auto-cancel after 2 minutes
+                        const cancelUpdates = {
+                            status: 'cancelled',
+                            cancelledAt: Date.now(),
+                            cancelReason: 'Auto-cancelled: Restaurant did not accept within 2 minutes',
+                            updatedAt: Date.now()
+                        };
+                        database.ref('orders/' + selectedOrderId).update(cancelUpdates);
+                        initiateRefund(order, 'Auto-cancelled: Restaurant did not accept within 2 minutes');
+                    }
+                });
+            }, 120000); // 2 minutes
             break;
         case 'preparing':
             updates.preparingAt = Date.now();
             break;
         case 'ready':
             updates.readyAt = Date.now();
-            break;
-        case 'out-for-delivery':
-            updates.outForDeliveryAt = Date.now();
+            // Notify riders about new order
+            notifyRidersAboutOrder(selectedOrderId, selectedOrderData);
             break;
     }
     
@@ -1121,13 +1272,8 @@ function updateSelectedOrderStatus(newStatus) {
         .then(() => {
             showNotification('success', 'Status Updated', `Order status changed to ${newStatus}`);
             
-            // If status is out-for-delivery, assign delivery partner
-            if (newStatus === 'out-for-delivery') {
-                assignDeliveryPartner(selectedOrderId);
-            }
-            
             // Show WhatsApp notification option
-            if (['preparing', 'ready', 'out-for-delivery'].includes(newStatus)) {
+            if (['preparing', 'ready'].includes(newStatus)) {
                 showWhatsAppModal(newStatus);
             }
         })
@@ -1137,20 +1283,224 @@ function updateSelectedOrderStatus(newStatus) {
         });
 }
 
-function assignDeliveryPartner(orderId) {
-    const deliveryData = {
-        deliveryPartner: DELIVERY_NAME,
-        deliveryPartnerPhone: DELIVERY_PHONE,
-        deliveryAssignedAt: Date.now()
+function assignToRider() {
+    if (!selectedOrderId || !selectedOrderData) {
+        showNotification('warning', 'No Order Selected', 'Please select an order first');
+        return;
+    }
+    
+    if (selectedOrderData.status !== 'ready') {
+        showNotification('warning', 'Order Not Ready', 'Order must be marked as ready before assigning to rider');
+        return;
+    }
+    
+    document.getElementById('rider-assignment-section').style.display = 'block';
+}
+
+function updateRidersDropdown() {
+    const dropdown = document.getElementById('available-riders');
+    dropdown.innerHTML = '<option value="">Select a rider...</option>';
+    
+    if (availableRiders.length === 0) {
+        dropdown.innerHTML += '<option value="" disabled>No riders available</option>';
+        return;
+    }
+    
+    availableRiders.forEach(rider => {
+        const option = document.createElement('option');
+        option.value = rider.id;
+        option.textContent = `${rider.name} (${rider.phone}) - ${rider.status === 'available' ? 'Available' : 'Active'}`;
+        dropdown.appendChild(option);
+    });
+}
+
+function confirmRiderAssignment() {
+    const riderSelect = document.getElementById('available-riders');
+    const selectedRiderId = riderSelect.value;
+    
+    if (!selectedRiderId) {
+        showNotification('warning', 'No Rider Selected', 'Please select a rider first');
+        return;
+    }
+    
+    // Get rider details
+    const rider = availableRiders.find(r => r.id === selectedRiderId);
+    if (!rider) {
+        showNotification('error', 'Rider Not Found', 'Selected rider not found');
+        return;
+    }
+    
+    // Calculate distance from rider to restaurant
+    const distance = calculateDistance(
+        rider.location.lat, 
+        rider.location.lng,
+        RESTAURANT_LOCATION.lat,
+        RESTAURANT_LOCATION.lng
+    );
+    
+    // Calculate delivery fee
+    const orderAmount = selectedOrderData.totalAmount || 0;
+    const platformFee = orderAmount * 0.05;
+    const gstOnPlatform = platformFee * 0.18;
+    const riderEarnings = platformFee + gstOnPlatform;
+    
+    const updates = {
+        status: 'out-for-delivery',
+        deliveryPartner: rider.name,
+        deliveryPartnerPhone: rider.phone,
+        deliveryAssignedAt: Date.now(),
+        riderId: rider.id,
+        riderDistance: distance.toFixed(2),
+        riderEarnings: riderEarnings.toFixed(2),
+        outForDeliveryAt: Date.now(),
+        updatedAt: Date.now()
     };
     
-    database.ref('orders/' + orderId).update(deliveryData)
+    database.ref('orders/' + selectedOrderId).update(updates)
         .then(() => {
-            console.log("Delivery partner assigned");
+            // Update rider status
+            database.ref('riders/' + rider.id).update({
+                status: 'busy',
+                currentOrderId: selectedOrderId,
+                updatedAt: Date.now()
+            });
+            
+            showNotification('success', 'Rider Assigned', `Order assigned to ${rider.name}`);
+            document.getElementById('rider-assignment-section').style.display = 'none';
+            
+            // Send notification to rider
+            sendRiderAssignmentNotification(selectedOrderData, rider);
+            
+            // Notify customer
+            notifyCustomer('out-for-delivery');
         })
         .catch(error => {
-            console.error("Error assigning delivery partner:", error);
+            console.error("Error assigning rider:", error);
+            showNotification('error', 'Assignment Failed', 'Failed to assign rider');
         });
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+function notifyRidersAboutOrder(orderId, order) {
+    if (order.deliveryMode !== 'delivery') return;
+    
+    // Get all available riders
+    database.ref('riders').once('value').then(snapshot => {
+        const riders = snapshot.val();
+        if (!riders) return;
+        
+        const availableRidersList = Object.values(riders).filter(rider => 
+            rider.status === 'available' || rider.status === 'active'
+        );
+        
+        // Sort by distance to restaurant
+        availableRidersList.sort((a, b) => {
+            const distA = calculateDistance(
+                a.location.lat, 
+                a.location.lng,
+                RESTAURANT_LOCATION.lat,
+                RESTAURANT_LOCATION.lng
+            );
+            const distB = calculateDistance(
+                b.location.lat, 
+                b.location.lng,
+                RESTAURANT_LOCATION.lat,
+                RESTAURANT_LOCATION.lng
+            );
+            return distA - distB;
+        });
+        
+        // Send notification to nearest rider first
+        if (availableRidersList.length > 0) {
+            const nearestRider = availableRidersList[0];
+            sendRiderOrderNotification(orderId, order, nearestRider);
+        }
+    });
+}
+
+function sendRiderAssignmentNotification(order, rider) {
+    const message = `🚚 *NEW DELIVERY ASSIGNED* 🚚%0A%0A` +
+                   `You have been assigned a new delivery!%0A%0A` +
+                   `*Order ID:* ${order.orderId || 'N/A'}%0A` +
+                   `*Customer:* ${order.customerName}%0A` +
+                   `*Pickup:* ${RESTAURANT_LOCATION.address}%0A` +
+                   `*Delivery:* ${order.address}%0A` +
+                   `*Earnings:* ₹${(order.totalAmount * 0.05 + (order.totalAmount * 0.05 * 0.18)).toFixed(2)}%0A` +
+                   `*OTP:* ${order.otp}%0A%0A` +
+                   `Please proceed to the restaurant for pickup.`;
+    
+    const whatsappURL = `https://wa.me/${rider.phone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappURL, '_blank');
+}
+
+function sendRiderOrderNotification(orderId, order, rider) {
+    const message = `🆕 *NEW DELIVERY ORDER* 🆕%0A%0A` +
+                   `A new delivery order is available!%0A%0A` +
+                   `*Order ID:* ${order.orderId || orderId.substring(0, 8)}%0A` +
+                   `*Amount:* ₹${order.totalAmount || 0}%0A` +
+                   `*Customer:* ${order.customerName}%0A` +
+                   `*Pickup:* ${RESTAURANT_LOCATION.address}%0A` +
+                   `*Earnings:* ₹${(order.totalAmount * 0.05 + (order.totalAmount * 0.05 * 0.18)).toFixed(2)}%0A%0A` +
+                   `You have 15 seconds to accept this order.`;
+    
+    const whatsappURL = `https://wa.me/${rider.phone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappURL, '_blank');
+    
+    // Set timeout for 15 seconds
+    setTimeout(() => {
+        database.ref('orders/' + orderId).once('value').then(snapshot => {
+            const currentOrder = snapshot.val();
+            if (currentOrder && currentOrder.status === 'ready' && !currentOrder.deliveryPartner) {
+                // Order not accepted, notify next rider
+                notifyNextAvailableRider(orderId, order, rider.id);
+            }
+        });
+    }, 15000);
+}
+
+function notifyNextAvailableRider(orderId, order, previousRiderId) {
+    database.ref('riders').once('value').then(snapshot => {
+        const riders = snapshot.val();
+        if (!riders) return;
+        
+        const availableRidersList = Object.values(riders).filter(rider => 
+            (rider.status === 'available' || rider.status === 'active') && 
+            rider.id !== previousRiderId
+        );
+        
+        // Sort by distance
+        availableRidersList.sort((a, b) => {
+            const distA = calculateDistance(
+                a.location.lat, 
+                a.location.lng,
+                RESTAURANT_LOCATION.lat,
+                RESTAURANT_LOCATION.lng
+            );
+            const distB = calculateDistance(
+                b.location.lat, 
+                b.location.lng,
+                RESTAURANT_LOCATION.lat,
+                RESTAURANT_LOCATION.lng
+            );
+            return distA - distB;
+        });
+        
+        if (availableRidersList.length > 0) {
+            const nextRider = availableRidersList[0];
+            sendRiderOrderNotification(orderId, order, nextRider);
+        }
+    });
 }
 
 // ==================== DELIVERY MANAGEMENT ====================
@@ -1182,8 +1532,8 @@ function confirmDelivery() {
     const updates = {
         status: 'delivered',
         deliveredAt: Date.now(),
-        deliveryPartner: partnerName || DELIVERY_NAME,
-        deliveryPartnerPhone: partnerPhone || DELIVERY_PHONE,
+        deliveryPartner: partnerName || selectedOrderData.deliveryPartner,
+        deliveryPartnerPhone: partnerPhone || selectedOrderData.deliveryPartnerPhone,
         deliveryOTP: otp,
         updatedAt: Date.now()
     };
@@ -1195,6 +1545,17 @@ function confirmDelivery() {
             
             // Move to order history
             moveToOrderHistory(selectedOrderId);
+            
+            // Update rider status
+            if (selectedOrderData.riderId) {
+                database.ref('riders/' + selectedOrderData.riderId).update({
+                    status: 'available',
+                    currentOrderId: null,
+                    completedOrders: firebase.database.ServerValue.increment(1),
+                    totalEarnings: firebase.database.ServerValue.increment(parseFloat(selectedOrderData.riderEarnings || 0)),
+                    updatedAt: Date.now()
+                });
+            }
             
             // Send delivery confirmation WhatsApp
             sendDeliveryConfirmation(selectedOrderData, partnerName, otp);
@@ -1215,6 +1576,8 @@ function moveToOrderHistory(orderId) {
                 database.ref('orderHistory/' + orderId).set(orderData)
                     .then(() => {
                         console.log("Order moved to history");
+                        // Remove from active orders
+                        database.ref('orders/' + orderId).remove();
                     })
                     .catch(error => {
                         console.error("Error moving to history:", error);
@@ -1257,10 +1620,19 @@ function confirmCancel() {
             closeCancelModal();
             
             // Initiate refund process
-            initiateRefund(selectedOrderData);
+            initiateRefund(selectedOrderData, reason);
             
             // Send cancellation notifications
             sendCancellationNotifications(selectedOrderData, reason);
+            
+            // Update rider status if assigned
+            if (selectedOrderData.riderId) {
+                database.ref('riders/' + selectedOrderData.riderId).update({
+                    status: 'available',
+                    currentOrderId: null,
+                    updatedAt: Date.now()
+                });
+            }
             
             // Move to order history
             moveToOrderHistory(selectedOrderId);
@@ -1271,7 +1643,7 @@ function confirmCancel() {
         });
 }
 
-function initiateRefund(order) {
+function initiateRefund(order, reason) {
     // Create refund record
     const refundRecord = {
         orderId: order.orderId || selectedOrderId,
@@ -1281,12 +1653,29 @@ function initiateRefund(order) {
         customerPhone: order.customerPhone,
         status: 'pending',
         initiatedAt: Date.now(),
-        expectedDate: Date.now() + 5 * 24 * 60 * 60 * 1000 // 5 days
+        expectedDate: Date.now() + 5 * 24 * 60 * 60 * 1000, // 5 days
+        reason: reason
     };
     
     database.ref('refunds/' + (order.orderId || selectedOrderId)).set(refundRecord)
         .then(() => {
             console.log("Refund initiated");
+            // Simulate refund processing
+            setTimeout(() => {
+                database.ref('refunds/' + (order.orderId || selectedOrderId)).update({
+                    status: 'processed',
+                    processedAt: Date.now()
+                });
+                
+                // Send refund confirmation
+                const refundMessage = `✅ *REFUND PROCESSED* ✅%0A%0A` +
+                                    `Refund of ₹${order.totalAmount} for Order #${order.orderId} has been processed.%0A` +
+                                    `It will reflect in your account within 5 working days.%0A%0A` +
+                                    `Thank you for choosing EasyGo!`;
+                
+                const whatsappURL = `https://wa.me/${order.customerPhone}?text=${encodeURIComponent(refundMessage)}`;
+                window.open(whatsappURL, '_blank');
+            }, 2000);
         })
         .catch(error => {
             console.error("Error creating refund record:", error);
@@ -1325,7 +1714,7 @@ function showWhatsAppModal(status) {
         'out-for-delivery': {
             title: 'Out for Delivery',
             description: 'Customer will be notified that order is out for delivery',
-            message: `🛵 *EasyGo Order Update* 🛵%0A%0AYour order #${selectedOrderData.orderId || selectedOrderId.substring(0, 8)} is out for delivery!%0ADelivery partner: ${DELIVERY_NAME}%0AEstimated arrival: 25-30 minutes.%0A%0APlease keep your OTP ready for delivery confirmation.`
+            message: `🛵 *EasyGo Order Update* 🛵%0A%0AYour order #${selectedOrderData.orderId || selectedOrderId.substring(0, 8)} is out for delivery!%0ADelivery partner: ${selectedOrderData.deliveryPartner || 'Our delivery partner'}%0AEstimated arrival: 25-30 minutes.%0A%0APlease keep your OTP ready for delivery confirmation.`
         }
     };
     
@@ -1357,7 +1746,7 @@ function sendDeliveryConfirmation(order, partnerName, otp) {
     const message = `✅ *ORDER DELIVERED* ✅%0A%0AYour EasyGo order has been delivered!%0A%0A` +
                    `*Order ID:* ${order.orderId || 'N/A'}%0A` +
                    `*Amount:* ₹${order.totalAmount || 0}%0A` +
-                   `*Delivery Partner:* ${partnerName || DELIVERY_NAME}%0A` +
+                   `*Delivery Partner:* ${partnerName || order.deliveryPartner}%0A` +
                    `*OTP Verified:* ${otp}%0A%0A` +
                    `Please rate your experience:%0A` +
                    `https://www.google.com/maps/place/EasyGo/@22.7767506,75.9581962,17z`;
@@ -1369,11 +1758,11 @@ function sendDeliveryConfirmation(order, partnerName, otp) {
     const adminMessage = `✅ *DELIVERY CONFIRMED* ✅%0A%0AOrder #${order.orderId || 'N/A'} delivered.%0A%0A` +
                         `*Customer:* ${order.customerName}%0A` +
                         `*Amount:* ₹${order.totalAmount || 0}%0A` +
-                        `*Delivery Partner:* ${partnerName || DELIVERY_NAME}%0A` +
+                        `*Delivery Partner:* ${partnerName || order.deliveryPartner}%0A` +
                         `*OTP:* ${otp}%0A` +
                         `*Time:* ${new Date().toLocaleTimeString()}`;
     
-    const adminWhatsappURL = `https://wa.me/${ADMIN_PHONE}?text=${encodeURIComponent(adminMessage)}`;
+    const adminWhatsappURL = `https://wa.me/917651837322?text=${encodeURIComponent(adminMessage)}`;
     window.open(adminWhatsappURL, '_blank');
 }
 
@@ -1395,7 +1784,7 @@ function sendCancellationNotifications(order, reason) {
                         `*Reason:* ${reason}%0A` +
                         `*Time:* ${new Date().toLocaleTimeString()}`;
     
-    const adminWhatsappURL = `https://wa.me/${ADMIN_PHONE}?text=${encodeURIComponent(adminMessage)}`;
+    const adminWhatsappURL = `https://wa.me/917651837322?text=${encodeURIComponent(adminMessage)}`;
     window.open(adminWhatsappURL, '_blank');
 }
 
@@ -1405,10 +1794,6 @@ function closeWhatsAppModal() {
 }
 
 // ==================== UTILITY FUNCTIONS ====================
-function callDeliveryPartner() {
-    window.open(`tel:${DELIVERY_PHONE}`, '_blank');
-}
-
 function closeDetailsModal() {
     document.getElementById('details-modal').classList.add('hidden');
 }
